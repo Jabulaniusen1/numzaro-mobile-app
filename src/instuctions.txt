@@ -1,0 +1,1161 @@
+================================================================================
+  MOBILE APP INSTRUCTIONS — React Native + Supabase
+  Based on: Numzaro / SocialBooster Web App
+================================================================================
+
+This document describes how to build a feature-complete mobile version of the
+Numzaro web app using React Native (Expo) and Supabase.
+
+CORE PRINCIPLE — Direct Supabase vs. API Routes:
+  The mobile app talks to Supabase DIRECTLY for all read/write operations that
+  are purely database queries. It only calls the Next.js API routes for
+  operations that require SERVER-SIDE SECRETS (third-party API keys that must
+  never be exposed in the mobile bundle).
+
+  DIRECT SUPABASE (no API call):
+    - Auth (login, signup, signout)
+    - User profile & raw wallet balance
+    - Orders list (SELECT from orders + services join)
+    - My Numbers list (SELECT from virtual_numbers, messages, otp_codes)
+    - Notifications (SELECT/UPDATE on notifications)
+    - Transactions (SELECT from wallet_transactions, twilio_charges,
+                    number_purchases, payments)
+    - Services list for Boost Socials (SELECT from services table)
+
+  MUST USE NEXT.JS API ROUTES (requires secret keys):
+    - Balance display with currency conversion
+      (/api/user/balance — uses EXCHANGE_RATE_API_KEY server secret)
+    - SMSPool service/country/pricing lookups
+      (/api/smspool/* — uses SMSPOOL_API_KEY)
+    - Number purchase & number actions (finish/ban/cancel/sync)
+      (/api/numbers/purchase, /api/numbers/[id] — calls SMSPool API)
+    - Social media order creation
+      (/api/orders/create — calls SMM panel API with secret key)
+    - Wallet funding & payment verification
+      (/api/wallet/fund, /api/payments/verify-popup — uses Paystack secret key)
+
+================================================================================
+  TABLE OF CONTENTS
+================================================================================
+
+  1.  Tech Stack
+  2.  Project Setup
+  3.  Supabase Configuration
+  4.  Database Schema Reference
+  5.  Folder Structure
+  6.  Environment Variables
+  7.  Navigation Architecture
+  8.  Authentication (Login + Signup)
+  9.  Dashboard (Home Screen)
+  10. Boost Socials (Services + Order Flow)
+  11. Virtual Numbers — Buy Number Flow
+  12. My Numbers (Active + History)
+  13. My Orders
+  14. Notifications
+  15. Transactions
+  16. Wallet / Balance & Fund Wallet
+  17. Shared Components & Utilities
+  18. API Layer (Server-Route Calls Only)
+  19. State Management
+  20. Supabase Realtime (Live OTP Updates)
+  21. Push Notifications (Optional)
+  22. Building & Publishing
+
+================================================================================
+  1. TECH STACK
+================================================================================
+
+  - React Native via Expo (managed workflow)
+  - Expo Router v3  (file-based navigation, like Next.js App Router)
+  - Supabase JS SDK v2  (auth + direct DB queries)
+  - NativeWind  (Tailwind CSS for React Native)
+  - Zustand  (lightweight global state for user, balance)
+  - React Query / TanStack Query  (caching + background refresh)
+  - Expo Clipboard  (copy phone/OTP codes)
+  - Expo Notifications  (push notifications)
+  - date-fns  (date formatting — same as web)
+
+  Brand Colors (match the web app exactly):
+    Primary:    #7C5CFC  (violet)
+    Primary H:  #6B4EFF  (hover / pressed)
+    Background: #F0F2FA
+    Dark BG:    #111827  (gray-900)
+
+================================================================================
+  2. PROJECT SETUP
+================================================================================
+
+Step 1 — Create the Expo project:
+
+  npx create-expo-app numzaro-mobile --template blank-typescript
+  cd numzaro-mobile
+
+Step 2 — Install Expo Router:
+
+  npx expo install expo-router expo-linking expo-constants expo-status-bar
+  npx expo install react-native-safe-area-context react-native-screens
+
+  In package.json, set "main": "expo-router/entry"
+
+Step 3 — Install Supabase:
+
+  npx expo install @supabase/supabase-js
+  npx expo install @react-native-async-storage/async-storage
+  npx expo install react-native-url-polyfill
+
+Step 4 — Install additional packages:
+
+  npx expo install expo-clipboard
+  npx expo install expo-notifications expo-device
+  npm install zustand
+  npm install @tanstack/react-query
+  npm install date-fns
+  npm install nativewind
+  npm install tailwindcss        (dev dependency)
+  npm install @gorhom/bottom-sheet   (for pickers)
+  npm install react-native-reanimated react-native-gesture-handler
+
+Step 5 — Configure NativeWind:
+
+  npx tailwindcss init
+  In tailwind.config.js: content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"]
+  In babel.config.js: plugins: ["nativewind/babel"]
+
+Step 6 — Run:
+
+  npx expo start
+
+================================================================================
+  3. SUPABASE CONFIGURATION
+================================================================================
+
+File: lib/supabase.ts
+
+  import 'react-native-url-polyfill/auto';
+  import AsyncStorage from '@react-native-async-storage/async-storage';
+  import { createClient } from '@supabase/supabase-js';
+
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+
+  export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      storage: AsyncStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  });
+
+Auth State Listener (root _layout.tsx):
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => setSession(session)
+    );
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // In the JSX, redirect based on session:
+  if (!session) return <Redirect href="/auth/login" />;
+
+================================================================================
+  4. DATABASE SCHEMA REFERENCE
+================================================================================
+
+These are the Supabase tables the mobile app queries directly.
+Row Level Security (RLS) is already enabled on the web — the mobile app's
+authenticated Supabase client respects the same RLS policies automatically.
+
+  users
+    id, email, full_name, wallet_balance (USD, numeric), push_token, created_at
+
+  orders
+    id, user_id, service_id, link, quantity, status, charge, currency,
+    start_count, remains, created_at, updated_at
+    -> services(name, category, type)   [foreign key join]
+
+  services
+    id, service_id, name, category, type, rate, min_quantity, max_quantity,
+    refill_allowed, cancel_allowed
+
+  virtual_numbers
+    id, user_id, phone_number, operator, product, monthly_cost, status,
+    expires_at, created_at, country_code, country_name, provider
+
+  messages
+    id, number_id, body, from, created_at
+
+  otp_codes
+    id, number_id, code, status, created_at
+
+  notifications
+    id, user_id, type, title, message, data (jsonb), read, read_at, created_at
+
+  wallet_transactions
+    id, user_id, type, amount, balance_before, balance_after, description,
+    payment_id, order_id, created_at
+
+  twilio_charges
+    id, user_id, virtual_number_id, charge_type, actual_cost, user_charged,
+    twilio_sid, metadata (jsonb), created_at
+    -> virtual_numbers(phone_number)
+
+  number_purchases
+    id, user_id, virtual_number_id, amount, status, created_at
+    -> virtual_numbers(phone_number)
+
+  payments
+    id, user_id, amount, currency, payment_provider, provider_transaction_id,
+    status, created_at
+
+================================================================================
+  5. FOLDER STRUCTURE
+================================================================================
+
+  numzaro-mobile/
+  ├── app/
+  │   ├── _layout.tsx                  (root layout + auth guard)
+  │   ├── auth/
+  │   │   ├── login.tsx
+  │   │   └── signup.tsx
+  │   ├── (tabs)/
+  │   │   ├── _layout.tsx              (bottom tab navigator)
+  │   │   ├── index.tsx                (Dashboard)
+  │   │   ├── services.tsx             (Boost Socials)
+  │   │   ├── numbers.tsx              (Buy Virtual Number)
+  │   │   ├── orders.tsx               (My Orders)
+  │   │   └── profile.tsx              (Profile / Settings)
+  │   ├── my-numbers/
+  │   │   └── index.tsx                (My Numbers — active + history)
+  │   ├── numbers/
+  │   │   └── [id]/
+  │   │       ├── messages.tsx
+  │   │       └── otps.tsx
+  │   ├── notifications.tsx
+  │   └── transactions.tsx
+  ├── lib/
+  │   ├── supabase.ts                  (Supabase client)
+  │   ├── api.ts                       (ONLY calls that need server secrets)
+  │   └── store.ts                     (Zustand)
+  ├── components/
+  │   ├── BalanceCard.tsx
+  │   ├── ServiceLogo.tsx
+  │   ├── CountdownTimer.tsx
+  │   ├── StatusBadge.tsx
+  │   ├── OrderCard.tsx
+  │   ├── NumberCard.tsx
+  │   ├── NotificationItem.tsx
+  │   └── TransactionItem.tsx
+  ├── hooks/
+  │   ├── useAuth.ts
+  │   ├── useBalance.ts
+  │   └── useCurrency.ts
+  └── constants/
+      └── theme.ts
+
+================================================================================
+  6. ENVIRONMENT VARIABLES
+================================================================================
+
+  EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+  EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+  EXPO_PUBLIC_API_BASE_URL=https://your-deployed-nextjs-app.com
+
+  EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are safe to
+  expose — Supabase RLS policies prevent unauthorized data access.
+
+  EXPO_PUBLIC_API_BASE_URL is your deployed Next.js web app. It is only called
+  for the handful of operations that need server-side secrets.
+
+  NEVER put SMSPOOL_API_KEY, PAYSTACK_SECRET_KEY, or EXCHANGE_RATE_API_KEY
+  in the mobile app. Those only live in the Next.js server environment.
+
+================================================================================
+  7. NAVIGATION ARCHITECTURE
+================================================================================
+
+Root _layout.tsx:
+  - Wraps in QueryClientProvider
+  - Checks Supabase session on mount
+  - If no session -> Redirect to /auth/login
+  - If session -> render (tabs)
+
+(tabs)/_layout.tsx — Bottom Tab Bar:
+  1. Home        -> (tabs)/index.tsx
+  2. Boost       -> (tabs)/services.tsx
+  3. Numbers     -> (tabs)/numbers.tsx
+  4. Orders      -> (tabs)/orders.tsx
+  5. Profile     -> (tabs)/profile.tsx
+
+  Tab bar style:
+    backgroundColor: white / #1f2937 (dark)
+    activeTintColor: #7C5CFC
+    inactiveTintColor: #9ca3af
+
+Additional stack screens (not tabs):
+  /my-numbers, /notifications, /transactions, /numbers/[id]/messages, /numbers/[id]/otps
+
+================================================================================
+  8. AUTHENTICATION — LOGIN & SIGNUP
+================================================================================
+
+Both screens talk directly to Supabase — no API route needed.
+
+--- LOGIN (app/auth/login.tsx) ---
+
+  const handleLogin = async () => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError(error.message);
+    // auth listener in _layout.tsx handles the redirect automatically
+  };
+
+--- SIGNUP (app/auth/signup.tsx) ---
+
+  const handleSignup = async () => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName } }
+    });
+    if (error) { setError(error.message); return; }
+
+    // Insert user profile row (same as web app)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('users').insert({
+        id: user.id,
+        email: user.email,
+        full_name: fullName,
+      });
+    }
+    // auth listener in _layout.tsx handles the redirect
+  };
+
+UI for both screens:
+  - Logo image at top
+  - Heading + "Already have account?" / "No account?" link
+  - TextInput for email (keyboardType="email-address", autoCapitalize="none")
+  - TextInput for password (secureTextEntry + eye toggle)
+  - Submit button (bg #7C5CFC, rounded-2xl, shows ActivityIndicator when loading)
+  - Error message if any
+
+================================================================================
+  9. DASHBOARD (HOME SCREEN) — app/(tabs)/index.tsx
+================================================================================
+
+All data fetched DIRECTLY from Supabase.
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // User profile + raw balance
+  const { data: profile } = await supabase
+    .from('users')
+    .select('full_name, wallet_balance')
+    .eq('id', user.id)
+    .single();
+
+  // Recent orders (last 5)
+  const { data: recentOrders } = await supabase
+    .from('orders')
+    .select('id, status, charge, quantity, created_at, services(name, category)')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+NOTE on balance display:
+  wallet_balance is stored in USD. To show in NGN (as the web does), you must
+  call the API route GET /api/user/balance which uses the server-secret
+  exchange rate key. For the Dashboard, you can show the raw USD amount
+  directly from Supabase, OR call the API route for converted balance.
+  See Section 16 for the full balance discussion.
+
+UI Layout (ScrollView + RefreshControl):
+  - "Dashboard" gradient header + "Welcome back, {name}" subtitle
+  - BalanceCard (see Section 16)
+  - Quick Access Grid: Boost Socials, Virtual Numbers, My Orders, Notifications
+  - Recent Orders list (service name, status badge, charge, date)
+
+================================================================================
+  10. BOOST SOCIALS — app/(tabs)/services.tsx
+================================================================================
+
+Services list: read DIRECTLY from Supabase (no API route).
+Order creation: MUST use API route (calls SMM panel with secret key).
+
+  // Fetch services and categories directly from Supabase
+  const { data } = await supabase
+    .from('services')
+    .select('id, service_id, name, category, type, rate, min_quantity, max_quantity, refill_allowed, cancel_allowed')
+    .order('category')
+    .order('name');
+
+  // Derive unique categories from results
+  const categories = [...new Set(data.map(s => s.category).filter(Boolean))];
+
+  // Filter by selected category (client-side, no extra query needed)
+  const filteredServices = data.filter(s => s.category === selectedCategory);
+
+Balance: fetch raw wallet_balance directly from the users table (see Section 16).
+
+Order creation still calls the API route (it talks to the SMM panel):
+  POST /api/orders/create   body: { service_id, link, quantity, comments? }
+  (attach Bearer token — see Section 18)
+
+State & UI: identical to web — category picker, service picker, link/qty inputs,
+order summary card (charge = qty / 1000 * rate), submit button.
+After order: invalidate the orders query + refetch balance.
+
+================================================================================
+  11. VIRTUAL NUMBERS — BUY NUMBER FLOW — app/(tabs)/numbers.tsx
+================================================================================
+
+ALL calls here MUST go through API routes (SMSPool API requires a server secret).
+Direct Supabase is NOT used in this screen.
+
+API calls (all need Bearer token — see Section 18):
+  GET  /api/smspool/services?mode={mode}&page={page}&limit=24
+  GET  /api/smspool/countries
+  GET  /api/smspool/pricing?service={code}&country={code}&mode=activation
+  GET  /api/smspool/pricing?rentalId={code}&mode=rental
+  POST /api/numbers/purchase   body: { mode, serviceCode, country, ... }
+
+State:
+  mode: "activation" | "rental"
+  step: "service" | "country" | "confirm"
+  services[], countries[], pricing, selectedService, selectedCountry,
+  selectedRentalOption, loadingServices, loadingCountries, loadingPricing, purchasing
+
+UI Flow (multi-step wizard):
+
+  Mode Toggle: [One-Time]  [Monthly Rental]
+  Progress: "1. Service > 2. Country > 3. Confirm"  (activation)
+            "1. Country > 2. Confirm"               (rental)
+  Back button when step != "service"
+
+  Step 1 — Service/Country grid:
+    Activation: 2-column grid of service cards (logo + name), search bar, pagination
+    Rental: 2-column grid of country cards (flag emoji + name)
+
+  Step 2 — Country grid (activation only):
+    Selected service banner at top with "Change" link
+    Searchable 2-column grid of countries
+
+  Step 3 — Confirm:
+    Order summary card:
+      Activation: service row + country row + "One-Time (20 min)" badge
+      Rental: country row + duration picker grid + "Rental" badge
+    Balance row (raw USD from Supabase or converted from API)
+    "Buy/Rent Number — $X.XX" full-width button
+
+  handlePurchase:
+    POST /api/numbers/purchase
+    On success: toast, reset to step 1, refetch balance
+
+================================================================================
+  12. MY NUMBERS — app/my-numbers/index.tsx
+================================================================================
+
+Data fetched DIRECTLY from Supabase (mirrors what /api/numbers does).
+
+  const { data: numbers } = await supabase
+    .from('virtual_numbers')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  // For each number, get message count + latest OTP
+  // Do this with parallel queries (Promise.all) same as the API route:
+
+  const numbersWithStats = await Promise.all(
+    numbers.map(async (number) => {
+      const [{ count: messageCount }, { data: latestOtp }, { count: otpCount }] =
+        await Promise.all([
+          supabase
+            .from('messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('number_id', number.id),
+          supabase
+            .from('otp_codes')
+            .select('code, status')
+            .eq('number_id', number.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from('otp_codes')
+            .select('*', { count: 'exact', head: true })
+            .eq('number_id', number.id)
+            .eq('status', 'pending'),
+        ]);
+
+      return {
+        ...number,
+        message_count: messageCount ?? 0,
+        pending_otp_count: otpCount ?? 0,
+        otp_code: latestOtp?.code,
+        otp_status: latestOtp?.status,
+      };
+    })
+  );
+
+Number actions (finish/ban/cancel/sync) MUST use the API route
+(they call SMSPool API server-side):
+  PATCH /api/numbers/{id}  body: { action: "finish"|"ban"|"cancel"|"sync" }
+
+Status tabs:
+  active:  ["PENDING", "RECEIVED", "ACTIVE"]
+  history: ["FINISHED", "CANCELED", "TIMEOUT", "BANNED", "CANCELLED", "SUSPENDED"]
+
+UI:
+  Header: "My Numbers" + "Buy Number" button
+  [Active]  [History] tab switcher
+  Search bar + refresh button
+  Active Number Card (first active number, prominently displayed):
+    - Short ID, countdown timer, pulsing status dot
+    - Service icon + product name, flag + country, price
+    - Action buttons: [Finish] [Ban] [Cancel] [Sync]
+    - Phone number with copy button (Clipboard.setStringAsync)
+    - OTP code with copy button (shows "—" if not yet received)
+  FlatList of all numbers below:
+    Each row: date, service, country flag, price, number/OTP (truncated), status badge
+
+CountdownTimer component:
+  useEffect with setInterval(1000)
+  diff = differenceInSeconds(parseISO(expiresAt), new Date())
+  Format: Xd Xh / Xh Xm / MM:SS / "Expired"
+
+================================================================================
+  13. MY ORDERS — app/(tabs)/orders.tsx
+================================================================================
+
+Data fetched DIRECTLY from Supabase.
+
+  const fetchOrders = async (page: number, status: string) => {
+    const from = (page - 1) * 20;
+    const to = from + 19;
+
+    let query = supabase
+      .from('orders')
+      .select('*, services(name, category, type)', { count: 'exact' })
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (status !== 'all') query = query.eq('status', status);
+
+    const { data: orders, count, error } = await query;
+    const totalPages = count ? Math.ceil(count / 20) : 1;
+    return { orders: orders ?? [], totalPages };
+  };
+
+State:
+  orders[], loading, selectedStatus ("all"|"Pending"|"In Progress"|"Partial"|"Completed"|"Cancelled")
+  page, totalPages
+
+UI:
+  Header: "My Orders" + refresh button
+  Status filter pills (horizontal ScrollView):
+    [All] [Pending] [In Progress] [Partial] [Completed] [Cancelled]
+    Active: bg #7C5CFC, white text
+  FlatList of order cards:
+    Service name + status badge | Category | Link (tappable) | qty · date + charge
+  Pagination: [< Prev]  Page X of Y  [Next >]
+  Empty state: Package icon + "No orders" + "Browse Services" button
+
+Status badge colors:
+  completed -> green | in progress -> blue | partial -> amber
+  pending -> violet | cancelled -> red
+
+================================================================================
+  14. NOTIFICATIONS — app/notifications.tsx
+================================================================================
+
+Data fetched DIRECTLY from Supabase.
+
+  const fetchNotifications = async (type: string) => {
+    let query = supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (type !== 'all') query = query.eq('type', type);
+
+    const { data: notifications } = await query;
+
+    // Unread count (separate query with head:true for efficiency)
+    const { count: unreadCount } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('read', false);
+
+    return { notifications: notifications ?? [], unreadCount: unreadCount ?? 0 };
+  };
+
+  // Mark single notification as read — direct Supabase update
+  const markAsRead = async (id: string) => {
+    await supabase
+      .from('notifications')
+      .update({ read: true, read_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', user.id);
+  };
+
+  // Mark all as read — direct Supabase update
+  const markAllAsRead = async () => {
+    await supabase
+      .from('notifications')
+      .update({ read: true, read_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('read', false);
+  };
+
+UI:
+  Header: "Notifications" + "Mark All Read" button (if unreadCount > 0)
+  Filter (BottomSheet picker): All / Transactions / Billing / Reminders / Expiration / Payment Failed
+  FlatList of notification items:
+    Unread: blue left border or dot | Icon | Title | Message (2 lines) | Time
+    Tap: markAsRead + navigate (to orders if order_id, to home if transaction)
+  Empty state: Bell icon + "No notifications"
+
+Types: "transaction" | "billing" | "subscription_reminder" | "expiration_reminder" | "payment_failed"
+
+Use Supabase Realtime (Section 20) to get instant notification updates
+instead of polling every 30 seconds.
+
+================================================================================
+  15. TRANSACTIONS — app/transactions.tsx
+================================================================================
+
+Data fetched DIRECTLY from Supabase (mirrors what /api/transactions does).
+The API route merges 4 tables — do the same on the client:
+
+  const fetchTransactions = async () => {
+    const [walletTx, twilioCharges, numberPurchases, payments] = await Promise.all([
+      supabase
+        .from('wallet_transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+
+      supabase
+        .from('twilio_charges')
+        .select('*, virtual_numbers(phone_number)')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+
+      supabase
+        .from('number_purchases')
+        .select('*, virtual_numbers(phone_number)')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+
+      supabase
+        .from('payments')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    // Normalize into unified shape
+    const transactions = [
+      ...(walletTx.data ?? []).map(tx => ({
+        id: tx.id, type: 'wallet', transaction_type: tx.type,
+        amount: parseFloat(tx.amount), balance_after: parseFloat(tx.balance_after),
+        description: tx.description, created_at: tx.created_at,
+        metadata: { payment_id: tx.payment_id, order_id: tx.order_id },
+      })),
+
+      ...(twilioCharges.data ?? []).map(c => ({
+        id: c.id, type: 'twilio_charge', transaction_type: c.charge_type,
+        amount: -parseFloat(c.user_charged),
+        actual_cost: parseFloat(c.actual_cost),
+        user_charged: parseFloat(c.user_charged),
+        description: getTwilioDescription(c.charge_type, c.virtual_numbers?.phone_number, c.metadata),
+        created_at: c.created_at,
+        metadata: { phone_number: c.virtual_numbers?.phone_number, ...c.metadata },
+      })),
+
+      ...(numberPurchases.data ?? []).map(p => ({
+        id: p.id, type: 'number_purchase', transaction_type: 'number_purchase',
+        amount: -parseFloat(p.amount),
+        description: `Phone number purchase: ${p.virtual_numbers?.phone_number ?? 'Unknown'}`,
+        created_at: p.created_at,
+        metadata: { phone_number: p.virtual_numbers?.phone_number },
+      })),
+
+      ...(payments.data ?? []).map(p => ({
+        id: p.id, type: 'payment',
+        transaction_type: p.status === 'Success' ? 'deposit' : 'payment_failed',
+        amount: parseFloat(p.amount),
+        description: `Wallet funding via ${p.payment_provider}`,
+        created_at: p.created_at,
+        metadata: { status: p.status, currency: p.currency },
+      })),
+    ];
+
+    // Sort all by date descending
+    transactions.sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    return transactions;
+  };
+
+  function getTwilioDescription(chargeType: string, phone: string | null, meta: any) {
+    const p = phone ?? meta?.phone_number ?? 'Unknown';
+    switch (chargeType) {
+      case 'incoming_sms':    return `Incoming SMS to ${p}`;
+      case 'otp_received':    return `OTP from ${meta?.service ?? 'Unknown'} (${p})`;
+      case 'number_purchase': return `Phone number purchase: ${p}`;
+      case 'number_renewal':  return `Phone number renewal: ${p}`;
+      default:                return `Twilio charge: ${chargeType} — ${p}`;
+    }
+  }
+
+Filter logic (client-side, after fetching all):
+  all:     show everything
+  charges:  amount < 0
+  deposits: amount > 0
+  numbers:  type === 'number_purchase'
+  sms_otp:  type === 'twilio_charge'
+
+UI:
+  Header: "Transactions" + subtitle
+  Filter pills: [All] [Charges] [Deposits] [Numbers] [SMS/OTP]
+  FlatList:
+    Icon (CreditCard/Phone/Wallet/MessageSquare) | Description + badge + date |
+    Amount (green "+$X" / red "-$X") + balance after
+
+================================================================================
+  16. WALLET / BALANCE & FUND WALLET
+================================================================================
+
+--- BALANCE DISPLAY ---
+
+wallet_balance in the users table is stored in USD (numeric).
+The web app converts it to NGN server-side using a secret exchange rate API key.
+
+You have two choices on mobile:
+
+  OPTION A — Show in USD directly (simplest):
+    Fetch straight from Supabase:
+      const { data } = await supabase
+        .from('users')
+        .select('wallet_balance')
+        .eq('id', user.id)
+        .single();
+      const balanceUSD = parseFloat(data.wallet_balance ?? '0');
+    Display as "$X.XX USD".
+
+  OPTION B — Show in NGN (matches web exactly):
+    Call the API route which does the conversion server-side:
+      GET /api/user/balance   (attach Bearer token)
+    Returns { balance: "XXXXX.XX", currency: "NGN" }
+    This is the ONLY place among "read" operations that needs the API route,
+    because the exchange rate key must stay secret.
+
+  RECOMMENDATION: Use Option B if you want the balance to match the web app
+  exactly (in NGN). Use Option A if you want to avoid any API route dependency
+  for reads and show USD instead.
+
+--- BALANCE CARD COMPONENT ---
+
+  Gradient card (violet to indigo):
+    "Account Balance" label
+    Large amount (from Supabase or API route — your choice above)
+    "Fund Wallet" button
+
+  Auto-refresh: use React Query with refetchInterval: 30000
+  After any purchase: queryClient.invalidateQueries({ queryKey: ['balance'] })
+
+--- FUND WALLET FLOW ---
+
+Must use the API route (Paystack secret key lives on server).
+
+Step 1: User enters amount in a Modal:
+  Minimum deposit: 500 NGN
+  Suggested quick amounts: 5,000 / 10,000 / 20,000 NGN
+
+Step 2: Initiate payment:
+  POST /api/wallet/fund   body: { amount, currency: "NGN" }
+  Returns: { access_code, reference, email }
+
+Step 3: Open Paystack in a WebView:
+  npx expo install react-native-webview
+  URL: https://checkout.paystack.com/{access_code}
+
+Step 4: Detect redirect in WebView:
+  onNavigationStateChange={(navState) => {
+    if (navState.url.includes('your-callback-url') || navState.url.includes('numzaro://')) {
+      setWebViewVisible(false);
+      // Verify payment:
+      POST /api/payments/verify-popup  body: { reference, type: 'wallet' }
+    }
+  }}
+
+Step 5: After verification:
+  queryClient.invalidateQueries({ queryKey: ['balance'] })
+  Show success toast
+
+Deep link scheme in app.json:
+  "scheme": "numzaro"
+  Set callback URL on Paystack dashboard to: numzaro://payment-callback
+
+================================================================================
+  17. SHARED COMPONENTS & UTILITIES
+================================================================================
+
+--- ServiceLogo ---
+  Props: { logo: string | null, name: string, size?: 'sm' | 'md' | 'lg' }
+  If logo: <Image source={{ uri: logo }} onError={() => setErr(true)} />
+  If no logo or error: View with LinearGradient + letter avatar
+
+--- StatusBadge ---
+  Props: { status: string }
+  const colors = {
+    completed:   { bg: '#dcfce7', text: '#15803d' },
+    'in progress': { bg: '#dbeafe', text: '#1d4ed8' },
+    partial:     { bg: '#fef3c7', text: '#b45309' },
+    pending:     { bg: '#ede9fe', text: '#7c3aed' },
+    cancelled:   { bg: '#fee2e2', text: '#b91c1c' },
+  };
+
+--- CountdownTimer ---
+  Props: { expiresAt: string | null }
+  setInterval(1000) to update
+  Uses date-fns differenceInSeconds
+  "Expired" when diff <= 0
+
+--- useCurrency hook ---
+  The currency is NGN (matching web app).
+  Store the currency code + locale format preference in Zustand.
+  format(amount: number) returns formatted string.
+  If using Option B balance (already converted to NGN):
+    format = (n) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`
+  If using Option A balance (USD):
+    format = (n) => `$${n.toFixed(2)}`
+
+--- useBalance hook ---
+  import { useQuery } from '@tanstack/react-query';
+
+  export function useBalance(userId: string) {
+    return useQuery({
+      queryKey: ['balance', userId],
+      queryFn: async () => {
+        // OPTION A — direct Supabase:
+        const { data } = await supabase
+          .from('users')
+          .select('wallet_balance')
+          .eq('id', userId)
+          .single();
+        return parseFloat(data?.wallet_balance ?? '0');
+
+        // OPTION B — API route with NGN conversion:
+        // const res = await apiFetch('/api/user/balance');
+        // return parseFloat((await res.json()).balance ?? '0');
+      },
+      refetchInterval: 30000,
+    });
+  }
+
+--- Zustand Store ---
+  interface AppStore {
+    userId: string | null;
+    setUserId: (id: string | null) => void;
+  }
+  // Balance and notifications live in React Query, not Zustand.
+  // Zustand is only for truly global persistent state (userId, currency pref).
+
+================================================================================
+  18. API LAYER — SERVER-ROUTE CALLS (Secret-Required Only)
+================================================================================
+
+This file ONLY contains functions that call the Next.js API routes.
+Everything else uses the Supabase client directly.
+
+File: lib/api.ts
+
+  const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+
+  // Attach the Supabase JWT so Next.js can authenticate the request
+  async function getBearerHeaders() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    };
+  }
+
+  async function apiFetch(path: string, options?: RequestInit) {
+    const headers = await getBearerHeaders();
+    const res = await fetch(`${BASE_URL}${path}`, { ...options, headers: { ...headers, ...options?.headers } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? `Request failed: ${res.status}`);
+    return data;
+  }
+
+  // ── Balance with currency conversion (uses EXCHANGE_RATE_API_KEY) ──
+  export const fetchBalanceConverted = () => apiFetch('/api/user/balance');
+
+  // ── SMSPool (uses SMSPOOL_API_KEY) ──
+  export const fetchSmsPoolServices = (mode: string, page: number) =>
+    apiFetch(`/api/smspool/services?mode=${mode}&page=${page}&limit=24`);
+
+  export const fetchSmsPoolCountries = () =>
+    apiFetch('/api/smspool/countries');
+
+  export const fetchPricing = (params: string) =>
+    apiFetch(`/api/smspool/pricing?${params}`);
+
+  // ── Number purchase + actions (calls SMSPool API server-side) ──
+  export const purchaseNumber = (body: object) =>
+    apiFetch('/api/numbers/purchase', { method: 'POST', body: JSON.stringify(body) });
+
+  export const updateNumber = (id: string, action: string) =>
+    apiFetch(`/api/numbers/${id}`, { method: 'PATCH', body: JSON.stringify({ action }) });
+
+  // ── Social media order creation (calls SMM panel API server-side) ──
+  export const createOrder = (body: object) =>
+    apiFetch('/api/orders/create', { method: 'POST', body: JSON.stringify(body) });
+
+  // ── Wallet funding (uses Paystack secret key) ──
+  export const initWalletFund = (amount: number, currency: string) =>
+    apiFetch('/api/wallet/fund', { method: 'POST', body: JSON.stringify({ amount, currency }) });
+
+  export const verifyPayment = (reference: string) =>
+    apiFetch('/api/payments/verify-popup', {
+      method: 'POST',
+      body: JSON.stringify({ reference, type: 'wallet' }),
+    });
+
+CORS note:
+  Native apps don't send an Origin header, so CORS is typically not an issue.
+  If you encounter CORS errors in Expo Go during development, add to next.config.js:
+
+    async headers() {
+      return [{
+        source: '/api/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET,POST,PATCH,DELETE,OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
+        ],
+      }];
+    }
+
+================================================================================
+  19. STATE MANAGEMENT
+================================================================================
+
+  1. LOCAL STATE (useState)   — form values, selections, step wizards, loading flags
+  2. REACT QUERY              — all server/Supabase data with caching + auto-refresh
+  3. ZUSTAND                  — userId, currency preference (minimal, truly global)
+
+React Query setup (app/_layout.tsx):
+
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { staleTime: 1000 * 60 } }, // 1 min stale time
+  });
+
+  <QueryClientProvider client={queryClient}>
+    <Stack />
+  </QueryClientProvider>
+
+Data query pattern (used in every screen):
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['orders', page, selectedStatus, userId],
+    queryFn: () => fetchOrders(page, selectedStatus),
+    enabled: !!userId,
+  });
+
+Mutation pattern (for writes):
+
+  const mutation = useMutation({
+    mutationFn: createOrder,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['balance'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    },
+  });
+
+After purchasing a number:
+  queryClient.invalidateQueries({ queryKey: ['balance'] });
+  queryClient.invalidateQueries({ queryKey: ['numbers'] });
+
+After any number action (finish/ban/cancel/sync):
+  queryClient.invalidateQueries({ queryKey: ['numbers'] });
+
+================================================================================
+  20. SUPABASE REALTIME — LIVE OTP UPDATES
+================================================================================
+
+Instead of polling every second for new OTPs, subscribe to Supabase Realtime.
+This gives you instant OTP delivery on the My Numbers screen.
+
+  useEffect(() => {
+    if (!activeNumberId) return;
+
+    const channel = supabase
+      .channel(`otp-${activeNumberId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'otp_codes',
+          filter: `number_id=eq.${activeNumberId}`,
+        },
+        (payload) => {
+          // New OTP received — update local state immediately
+          setOtpCode(payload.new.code);
+          // Also invalidate numbers query to reflect updated state
+          queryClient.invalidateQueries({ queryKey: ['numbers'] });
+          // Optionally show a local notification
+          showToast(`OTP received: ${payload.new.code}`);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [activeNumberId]);
+
+Also subscribe to notifications in real time:
+
+  const notifChannel = supabase
+    .channel('notifications')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'notifications',
+      filter: `user_id=eq.${userId}`,
+    }, (payload) => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    })
+    .subscribe();
+
+To enable Realtime on Supabase tables, go to:
+  Supabase Dashboard -> Table Editor -> otp_codes -> Enable Realtime
+  Do the same for: notifications, virtual_numbers
+
+================================================================================
+  21. PUSH NOTIFICATIONS (OPTIONAL)
+================================================================================
+
+Step 1:
+  npx expo install expo-notifications expo-device
+
+Step 2 — Register and save token:
+
+  async function registerPushToken(userId: string) {
+    if (!Device.isDevice) return;
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') return;
+    const token = (await Notifications.getExpoPushTokenAsync()).data;
+
+    // Save to Supabase directly (no API route needed)
+    await supabase.from('users').update({ push_token: token }).eq('id', userId);
+  }
+
+Step 3 — Backend sends push when OTP arrives:
+  Your Next.js SMS/OTP webhook handler (already existing) sends:
+
+  fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to: user.push_token,
+      title: 'OTP Received',
+      body: `Your code: ${otpCode}`,
+      data: { type: 'otp', numberId },
+    }),
+  });
+
+Step 4 — Handle tap:
+
+  Notifications.addNotificationResponseReceivedListener((response) => {
+    const { type, numberId } = response.notification.request.content.data;
+    if (type === 'otp') router.push('/my-numbers');
+    if (type === 'order') router.push('/(tabs)/orders');
+  });
+
+================================================================================
+  22. BUILDING & PUBLISHING
+================================================================================
+
+Development:
+  npx expo start
+  npx expo start --ios       (requires macOS + Xcode)
+  npx expo start --android   (requires Android Studio)
+
+Production builds (EAS):
+  npm install -g eas-cli
+  eas build:configure
+  eas build --platform ios
+  eas build --platform android
+
+Submit to stores:
+  eas submit --platform ios
+  eas submit --platform android
+
+OTA updates (no app store review needed for JS-only changes):
+  eas update --channel production
+
+================================================================================
+  QUICK REFERENCE — DIRECT SUPABASE vs API ROUTE
+================================================================================
+
+  OPERATION                         METHOD
+  ─────────────────────────────────────────────────────────────
+  Login / Signup / Signout          supabase.auth.*
+  User profile (name)               supabase.from('users').select
+  Raw balance (USD)                 supabase.from('users').select('wallet_balance')
+  Balance converted to NGN          GET /api/user/balance          [API ROUTE]
+  Services list (boost socials)     supabase.from('services').select
+  Create social media order         POST /api/orders/create        [API ROUTE]
+  Orders list                       supabase.from('orders').select
+  Virtual number services/pricing   GET /api/smspool/*             [API ROUTE]
+  Purchase virtual number           POST /api/numbers/purchase     [API ROUTE]
+  Number actions (finish/ban/etc)   PATCH /api/numbers/{id}        [API ROUTE]
+  My Numbers list                   supabase.from('virtual_numbers').select
+  OTP codes                         supabase.from('otp_codes').select
+  Messages                          supabase.from('messages').select
+  Notifications (read/update)       supabase.from('notifications').*
+  Transactions                      supabase.from(4 tables).select
+  Fund wallet                       POST /api/wallet/fund          [API ROUTE]
+  Verify payment                    POST /api/payments/verify-popup [API ROUTE]
+  Save push token                   supabase.from('users').update
+  ─────────────────────────────────────────────────────────────
+
+================================================================================
+  FEATURE PARITY CHECKLIST
+================================================================================
+
+  [x] Login / Signup / Signout (Supabase auth)
+  [x] Dashboard — balance + quick links + recent orders (Supabase direct)
+  [x] Boost Socials — services from DB, order via API route
+  [x] Virtual Numbers — buy flow via SMSPool API route
+  [x] My Numbers — list from DB, actions via API route
+  [x] OTP display + copy, phone number copy
+  [x] Real-time OTP via Supabase Realtime channel
+  [x] Countdown timer for active numbers
+  [x] Number actions: Finish / Ban / Cancel / Sync
+  [x] My Orders — paginated list from DB (Supabase direct)
+  [x] Notifications — read/update from DB (Supabase direct), realtime
+  [x] Transactions — merged from 4 tables (Supabase direct)
+  [x] Fund Wallet — Paystack via API route + WebView
+  [x] Pull-to-refresh on all screens
+  [x] Push notifications for OTPs and order updates
+  [x] Sign out
+
+================================================================================
+  END OF INSTRUCTIONS
+================================================================================
