@@ -21,7 +21,63 @@ import {
 import { useAppStore } from '@/lib/store';
 import { useBalance } from '@/hooks/useBalance';
 import { useCurrency } from '@/hooks/useCurrency';
+import { useTheme } from '@/hooks/useTheme';
+import { ThemeColors } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
+import { ServiceLogo } from '@/components/ServiceLogo';
+
+// ISO-2 code → flag emoji via Regional Indicator Symbols
+function isoToFlag(iso: string): string {
+  return Array.from(iso.toUpperCase().slice(0, 2))
+    .map((c) => String.fromCodePoint(c.charCodeAt(0) + 127397))
+    .join('');
+}
+
+// Common country name → ISO-2 fallback map
+const COUNTRY_ISO: Record<string, string> = {
+  'united states': 'US', 'usa': 'US', 'us': 'US',
+  'united kingdom': 'GB', 'uk': 'GB', 'england': 'GB',
+  'nigeria': 'NG', 'ghana': 'GH', 'kenya': 'KE',
+  'south africa': 'ZA', 'egypt': 'EG', 'ethiopia': 'ET',
+  'canada': 'CA', 'australia': 'AU', 'germany': 'DE',
+  'france': 'FR', 'italy': 'IT', 'spain': 'ES',
+  'netherlands': 'NL', 'sweden': 'SE', 'norway': 'NO',
+  'russia': 'RU', 'china': 'CN', 'india': 'IN',
+  'brazil': 'BR', 'mexico': 'MX', 'argentina': 'AR',
+  'indonesia': 'ID', 'pakistan': 'PK', 'bangladesh': 'BD',
+  'japan': 'JP', 'south korea': 'KR', 'vietnam': 'VN',
+  'philippines': 'PH', 'thailand': 'TH', 'malaysia': 'MY',
+  'singapore': 'SG', 'hong kong': 'HK', 'taiwan': 'TW',
+  'turkey': 'TR', 'saudi arabia': 'SA', 'uae': 'AE',
+  'united arab emirates': 'AE', 'israel': 'IL', 'poland': 'PL',
+  'ukraine': 'UA', 'romania': 'RO', 'czech republic': 'CZ',
+  'hungary': 'HU', 'portugal': 'PT', 'greece': 'GR',
+  'belgium': 'BE', 'switzerland': 'CH', 'austria': 'AT',
+  'denmark': 'DK', 'finland': 'FI', 'new zealand': 'NZ',
+  'colombia': 'CO', 'chile': 'CL', 'peru': 'PE',
+  'venezuela': 'VE', 'cambodia': 'KH', 'myanmar': 'MM',
+  'morocco': 'MA', 'algeria': 'DZ', 'tunisia': 'TN',
+  'senegal': 'SN', 'cameroon': 'CM', 'tanzania': 'TZ',
+  'uganda': 'UG', 'zimbabwe': 'ZW', 'zambia': 'ZM',
+  'ivory coast': 'CI', 'côte d\'ivoire': 'CI',
+};
+
+function countryFlag(code?: string, name?: string): string {
+  // Try the short_name/code field first if it looks like an ISO-2 code
+  if (code && /^[a-zA-Z]{2}$/.test(code.trim())) {
+    return isoToFlag(code.trim());
+  }
+  // Fall back to country name lookup
+  if (name) {
+    const iso = COUNTRY_ISO[name.toLowerCase().trim()];
+    if (iso) return isoToFlag(iso);
+  }
+  // Last resort: try using the code anyway if it's at least 2 chars
+  if (code && code.trim().length >= 2) {
+    return isoToFlag(code.trim());
+  }
+  return '🌍';
+}
 
 type Mode = 'activation' | 'rental';
 type Step = 'service' | 'country' | 'confirm';
@@ -50,6 +106,8 @@ export default function NumbersScreen() {
   const userId = useAppStore((s) => s.userId);
   const { data: balance } = useBalance(userId ?? '');
   const { format } = useCurrency();
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
 
   const [mode, setMode] = useState<Mode>('activation');
   const [step, setStep] = useState<Step>('service');
@@ -152,7 +210,7 @@ export default function NumbersScreen() {
           ) : (
             <FlatList
               data={filteredServices}
-              keyExtractor={(item) => item.ID}
+              keyExtractor={(item) => `svc-${item.ID}`}
               numColumns={2}
               columnWrapperStyle={{ gap: 10 }}
               contentContainerStyle={styles.grid}
@@ -165,7 +223,7 @@ export default function NumbersScreen() {
                     setStep('country');
                   }}
                 >
-                  <Icon name="phone" size={24} color="#7C5CFC" />
+                  <ServiceLogo logo={item.logo} name={item.name} size="md" />
                   <Text style={styles.gridLabel} numberOfLines={2}>{item.name}</Text>
                 </TouchableOpacity>
               )}
@@ -201,7 +259,7 @@ export default function NumbersScreen() {
           {mode === 'activation' && selectedService && (
             <View style={styles.selectedBanner}>
               <View style={styles.selectedBannerInner}>
-                <Icon name="phone" size={13} color="#7c3aed" />
+                <ServiceLogo logo={selectedService.logo} name={selectedService.name} size="sm" />
                 <Text style={styles.selectedBannerText}>{selectedService.name}</Text>
               </View>
               <TouchableOpacity onPress={() => { setStep('service'); setSelectedService(null); }}>
@@ -221,7 +279,7 @@ export default function NumbersScreen() {
           ) : (
             <FlatList
               data={filteredCountries}
-              keyExtractor={(item) => item.name}
+              keyExtractor={(item) => `cty-${item.name}`}
               numColumns={2}
               columnWrapperStyle={{ gap: 10 }}
               contentContainerStyle={styles.grid}
@@ -234,7 +292,7 @@ export default function NumbersScreen() {
                     setStep('confirm');
                   }}
                 >
-                  <Icon name="placeholder" size={24} color="#7C5CFC" />
+                  <Text style={styles.flagEmoji}>{countryFlag(item.short_name, item.name)}</Text>
                   <Text style={styles.gridLabel} numberOfLines={2}>{item.name}</Text>
                 </TouchableOpacity>
               )}
@@ -259,7 +317,7 @@ export default function NumbersScreen() {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Country</Text>
                 <View style={styles.summaryCountryVal}>
-                  <Icon name="placeholder" size={13} color="#111827" />
+                  <Text style={{ fontSize: 16 }}>{countryFlag(selectedCountry.short_name, selectedCountry.name)}</Text>
                   <Text style={styles.summaryVal}>{selectedCountry.name}</Text>
                 </View>
               </View>
@@ -341,7 +399,7 @@ export default function NumbersScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
-          <Icon name="phone" size={22} color="#111827" />
+          <Icon name="phone" size={22} color={colors.text} />
           <Text style={styles.headerTitle}>Virtual Numbers</Text>
         </View>
 
@@ -379,92 +437,58 @@ export default function NumbersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F2FA' },
-  header: { padding: 16, paddingBottom: 8 },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#111827' },
-  modeToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#e5e7eb',
-    borderRadius: 12,
-    padding: 3,
-    marginBottom: 12,
-  },
-  modeBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
-  modeBtnActive: { backgroundColor: '#7C5CFC' },
-  modeBtnText: { fontSize: 13, fontWeight: '600', color: '#6b7280' },
-  modeBtnTextActive: { color: '#fff' },
-  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 4 },
-  backBtnText: { color: '#7C5CFC', fontSize: 13, fontWeight: '600' },
-  stepLabel: { fontSize: 13, color: '#6b7280', fontWeight: '500' },
-  search: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 14,
-    color: '#111827',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  grid: { padding: 16, paddingTop: 4, paddingBottom: 100, gap: 10 },
-  gridCard: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    gap: 8,
-  },
-  gridLabel: { fontSize: 12, fontWeight: '600', color: '#374151', textAlign: 'center' },
-  pagination: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
-  pageBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7C5CFC', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
-  pageBtnDisabled: { backgroundColor: '#e5e7eb' },
-  pageBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  pageText: { color: '#374151', fontSize: 13 },
-  selectedBanner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#ede9fe',
-    marginHorizontal: 16,
-    marginBottom: 10,
-    borderRadius: 10,
-    padding: 10,
-  },
-  selectedBannerInner: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  selectedBannerText: { fontSize: 13, color: '#7c3aed', fontWeight: '600' },
-  summaryCountryVal: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  changeLink: { color: '#7C5CFC', fontSize: 13, fontWeight: '600' },
-  confirmContent: { padding: 16, paddingBottom: 100 },
-  summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16 },
-  summaryTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 12 },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  summaryLabel: { fontSize: 13, color: '#6b7280' },
-  summaryVal: { fontSize: 13, fontWeight: '600', color: '#111827' },
-  typeBadge: { backgroundColor: '#ede9fe', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  typeBadgeText: { color: '#7c3aed', fontSize: 12, fontWeight: '600' },
-  durationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  durationBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#F0F2FA',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  durationBtnActive: { backgroundColor: '#7C5CFC', borderColor: '#7C5CFC' },
-  durationBtnText: { fontSize: 13, color: '#374151' },
-  durationBtnTextActive: { color: '#fff', fontWeight: '600' },
-  buyBtn: {
-    backgroundColor: '#7C5CFC',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-  },
-  buyBtnDisabled: { opacity: 0.7 },
-  buyBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    header: { padding: 16, paddingBottom: 8 },
+    headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+    headerTitle: { fontSize: 22, fontFamily: 'Poppins_700Bold', color: c.text },
+    modeToggle: { flexDirection: 'row', backgroundColor: c.toggleBg, borderRadius: 12, padding: 3, marginBottom: 12 },
+    modeBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
+    modeBtnActive: { backgroundColor: '#7C5CFC' },
+    modeBtnText: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.textSub },
+    modeBtnTextActive: { color: '#fff' },
+    stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 4 },
+    backBtnText: { color: '#7C5CFC', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
+    stepLabel: { fontSize: 13, color: c.textSub, fontFamily: 'Poppins_500Medium' },
+    search: {
+      backgroundColor: c.input, borderRadius: 12, padding: 12, fontSize: 14,
+      color: c.text, marginHorizontal: 16, marginBottom: 12,
+      borderWidth: 1, borderColor: c.inputBorder,
+    },
+    grid: { padding: 16, paddingTop: 4, paddingBottom: 100, gap: 10 },
+    gridCard: { flex: 1, backgroundColor: c.card, borderRadius: 12, padding: 14, alignItems: 'center', gap: 8 },
+    flagEmoji: { fontSize: 32 },
+    gridLabel: { fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: c.text, textAlign: 'center' },
+    pagination: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
+    pageBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7C5CFC', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+    pageBtnDisabled: { backgroundColor: c.border },
+    pageBtnText: { color: '#fff', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
+    pageText: { color: c.text, fontSize: 13 },
+    selectedBanner: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      backgroundColor: c.accentLight, marginHorizontal: 16, marginBottom: 10, borderRadius: 10, padding: 10,
+    },
+    selectedBannerInner: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    selectedBannerText: { fontSize: 13, color: c.accentText, fontFamily: 'Poppins_600SemiBold' },
+    summaryCountryVal: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    changeLink: { color: '#7C5CFC', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
+    confirmContent: { padding: 16, paddingBottom: 100 },
+    summaryCard: { backgroundColor: c.card, borderRadius: 16, padding: 16, marginBottom: 16 },
+    summaryTitle: { fontSize: 16, fontFamily: 'Poppins_700Bold', color: c.text, marginBottom: 12 },
+    summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    summaryLabel: { fontSize: 13, color: c.textSub },
+    summaryVal: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.text },
+    typeBadge: { backgroundColor: c.accentLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+    typeBadgeText: { color: c.accentText, fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
+    durationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+    durationBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: c.cardAlt, borderWidth: 1, borderColor: c.border },
+    durationBtnActive: { backgroundColor: '#7C5CFC', borderColor: '#7C5CFC' },
+    durationBtnText: { fontSize: 13, color: c.text },
+    durationBtnTextActive: { color: '#fff', fontFamily: 'Poppins_600SemiBold' },
+    buyBtn: { backgroundColor: '#7C5CFC', borderRadius: 16, padding: 16, alignItems: 'center' },
+    buyBtnDisabled: { opacity: 0.7 },
+    buyBtnText: { color: '#fff', fontSize: 16, fontFamily: 'Poppins_700Bold' },
+  });
+}

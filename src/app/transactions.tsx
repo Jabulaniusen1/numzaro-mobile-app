@@ -15,15 +15,17 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
 import { useCurrency } from '@/hooks/useCurrency';
+import { useTheme } from '@/hooks/useTheme';
+import { ThemeColors } from '@/lib/theme';
 import { TransactionItem } from '@/components/TransactionItem';
 import { Icon } from '@/components/Icon';
 
 const FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'charges', label: 'Charges' },
-  { key: 'deposits', label: 'Deposits' },
-  { key: 'numbers', label: 'Numbers' },
-  { key: 'sms_otp', label: 'SMS/OTP' },
+  { key: 'all',      label: 'All',      color: '#6b7280' },
+  { key: 'charges',  label: 'Charges',  color: '#ef4444' },
+  { key: 'deposits', label: 'Deposits', color: '#22c55e' },
+  { key: 'numbers',  label: 'Numbers',  color: '#3b82f6' },
+  { key: 'sms_otp',  label: 'SMS/OTP',  color: '#f59e0b' },
 ];
 
 function getTwilioDescription(chargeType: string, phone: string | null, meta: any): string {
@@ -42,6 +44,8 @@ export default function TransactionsScreen() {
   const userId = useAppStore((s) => s.userId);
   const { format } = useCurrency();
   const [filter, setFilter] = useState('all');
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
 
   const { data: transactions = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['transactions', userId],
@@ -136,7 +140,7 @@ export default function TransactionsScreen() {
         </TouchableOpacity>
         <View>
           <View style={styles.headerTitleRow}>
-            <Icon name="barChartDollar" size={18} color="#111827" />
+            <Icon name="barChartDollar" size={18} color={colors.text} />
             <Text style={styles.headerTitle}>Transactions</Text>
           </View>
           <Text style={styles.headerSub}>Your financial history</Text>
@@ -153,10 +157,11 @@ export default function TransactionsScreen() {
         {FILTERS.map((f) => (
           <TouchableOpacity
             key={f.key}
-            style={[styles.pill, filter === f.key && styles.pillActive]}
+            style={[styles.filterChip, filter === f.key && { backgroundColor: f.color, borderColor: f.color }]}
             onPress={() => setFilter(f.key)}
           >
-            <Text style={[styles.pillText, filter === f.key && styles.pillTextActive]}>
+            {filter !== f.key && <View style={[styles.filterDot, { backgroundColor: f.color }]} />}
+            <Text style={[styles.filterChipText, filter === f.key && { color: '#fff' }]}>
               {f.label}
             </Text>
           </TouchableOpacity>
@@ -190,33 +195,25 @@ export default function TransactionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F2FA' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    paddingBottom: 8,
-  },
-  backBtn: { padding: 4 },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  headerSub: { fontSize: 12, color: '#6b7280' },
-  filterScroll: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  pillActive: { backgroundColor: '#7C5CFC', borderColor: '#7C5CFC' },
-  pillText: { fontSize: 13, color: '#374151', fontWeight: '500' },
-  pillTextActive: { color: '#fff' },
-  listContent: { padding: 16, paddingTop: 4, paddingBottom: 60 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
-  emptyText: { color: '#6b7280', fontSize: 14 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 8 },
+    backBtn: { padding: 4 },
+    headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    headerTitle: { fontSize: 18, fontFamily: 'Poppins_700Bold', color: c.text },
+    headerSub: { fontSize: 12, color: c.textSub },
+    filterScroll: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
+    filterChip: {
+      flexDirection: 'row', alignItems: 'center', height: 30,
+      paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20,
+      backgroundColor: c.card, borderWidth: 1, borderColor: c.border, gap: 5,
+    },
+    filterDot: { width: 6, height: 6, borderRadius: 3 },
+    filterChipText: { fontSize: 12, color: c.text, fontFamily: 'Poppins_500Medium' },
+    listContent: { padding: 16, paddingTop: 4, paddingBottom: 60 },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
+    emptyText: { color: c.textSub, fontSize: 14 },
+  });
+}

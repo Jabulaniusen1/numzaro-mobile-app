@@ -16,6 +16,8 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { updateNumber } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
+import { useTheme } from '@/hooks/useTheme';
+import { ThemeColors } from '@/lib/theme';
 import { NumberCard } from '@/components/NumberCard';
 import { StatusBadge } from '@/components/StatusBadge';
 import { CountdownTimer } from '@/components/CountdownTimer';
@@ -30,6 +32,8 @@ export default function MyNumbersScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.userId);
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const [tab, setTab] = useState<TabType>('active');
   const [search, setSearch] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -232,44 +236,23 @@ export default function MyNumbersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F2FA' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    paddingBottom: 8,
-  },
-  backBtn: { padding: 4, marginRight: 4 },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#111827', flex: 1, textAlign: 'center' },
-  buyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7C5CFC', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 7 },
-  buyBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  tabRow: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 10,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 12,
-    padding: 3,
-  },
-  tabBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
-  tabBtnActive: { backgroundColor: '#7C5CFC' },
-  tabBtnText: { fontSize: 14, fontWeight: '600', color: '#6b7280' },
-  tabBtnTextActive: { color: '#fff' },
-  search: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 13,
-    color: '#111827',
-    marginHorizontal: 16,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  listContent: { padding: 16, paddingTop: 4, paddingBottom: 100 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyBox: { alignItems: 'center', paddingVertical: 48, gap: 10 },
-  emptyText: { color: '#6b7280', fontSize: 14 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 8 },
+    backBtn: { padding: 4, marginRight: 4 },
+    headerTitle: { fontSize: 20, fontFamily: 'Poppins_700Bold', color: c.text, flex: 1, textAlign: 'center' },
+    buyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7C5CFC', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 7 },
+    buyBtnText: { color: '#fff', fontFamily: 'Poppins_700Bold', fontSize: 13 },
+    tabRow: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 10, backgroundColor: c.toggleBg, borderRadius: 12, padding: 3 },
+    tabBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
+    tabBtnActive: { backgroundColor: '#7C5CFC' },
+    tabBtnText: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: c.textSub },
+    tabBtnTextActive: { color: '#fff' },
+    search: { backgroundColor: c.input, borderRadius: 12, padding: 12, fontSize: 13, color: c.text, marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: c.inputBorder },
+    listContent: { padding: 16, paddingTop: 4, paddingBottom: 100 },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    emptyBox: { alignItems: 'center', paddingVertical: 48, gap: 10 },
+    emptyText: { color: c.textSub, fontSize: 14 },
+  });
+}

@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { Icon, IconName } from '@/components/Icon';
+import { useTheme } from '@/hooks/useTheme';
 
 function TabIcon({ icon, label, focused }: { icon: IconName; label: string; focused: boolean }) {
   return (
@@ -14,11 +15,19 @@ function TabIcon({ icon, label, focused }: { icon: IconName; label: string; focu
 }
 
 export default function TabsLayout() {
+  const { colors } = useTheme();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: {
+          backgroundColor: colors.tabBar,
+          borderTopWidth: 1,
+          borderTopColor: colors.tabBorder,
+          height: 68,
+          paddingBottom: 0,
+          paddingTop: 0,
+        },
         tabBarShowLabel: false,
       }}
     >
@@ -37,19 +46,19 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="numbers"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon="phone" label="Numbers" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon icon="phone" label="No" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="orders"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon="box" label="Orders" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon icon="box" label="Order" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon="user" label="Profile" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon icon="user" label="Me" focused={focused} />,
         }}
       />
     </Tabs>
@@ -57,16 +66,21 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    height: 70,
-    paddingBottom: 8,
-    paddingTop: 4,
+  tabIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingTop: 6,
   },
-  tabIcon: { alignItems: 'center', justifyContent: 'center' },
-  tabLabel: { fontSize: 10, marginTop: 2 },
-  tabLabelActive: { color: '#7C5CFC', fontWeight: '600' },
-  tabLabelInactive: { color: '#9ca3af' },
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  tabLabelActive: {
+    color: '#7C5CFC',
+    fontWeight: '600',
+  },
+  tabLabelInactive: {
+    color: '#9ca3af',
+  },
 });

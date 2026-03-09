@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Switch } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
 import { useBalance } from '@/hooks/useBalance';
 import { useCurrency } from '@/hooks/useCurrency';
+import { useTheme } from '@/hooks/useTheme';
+import { ThemeColors } from '@/lib/theme';
 import { Icon, IconName } from '@/components/Icon';
 
 interface MenuItem {
@@ -26,8 +28,12 @@ export default function ProfileScreen() {
   const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.userId);
   const setUserId = useAppStore((s) => s.setUserId);
+  const darkMode = useAppStore((s) => s.darkMode);
+  const setDarkMode = useAppStore((s) => s.setDarkMode);
   const { data: balance } = useBalance(userId ?? '');
   const { format } = useCurrency();
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['profile', userId],
@@ -96,9 +102,25 @@ export default function ProfileScreen() {
                 <Icon name={item.icon} size={18} color="#7C5CFC" />
               </View>
               <Text style={styles.menuLabel}>{item.label}</Text>
-              <Icon name="arrowRight" size={16} color="#d1d5db" />
+              <Icon name="arrowRight" size={16} color={colors.textMuted} />
             </TouchableOpacity>
           ))}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Preferences</Text>
+          <View style={styles.menuRow}>
+            <View style={styles.menuIconWrap}>
+              <Icon name="eye" size={18} color="#7C5CFC" />
+            </View>
+            <Text style={styles.menuLabel}>Dark Mode</Text>
+            <Switch
+              value={darkMode}
+              onValueChange={setDarkMode}
+              trackColor={{ false: colors.border, true: '#7C5CFC' }}
+              thumbColor="#fff"
+            />
+          </View>
         </View>
 
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
@@ -112,71 +134,60 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F2FA' },
-  content: { padding: 20, paddingBottom: 100 },
-  title: { fontSize: 24, fontWeight: '700', color: '#111827', marginBottom: 20 },
-  profileCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#7C5CFC',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatarText: { color: '#fff', fontSize: 28, fontWeight: '700' },
-  fullName: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 4 },
-  email: { fontSize: 13, color: '#6b7280', marginBottom: 12 },
-  balancePill: {
-    backgroundColor: '#ede9fe',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-  },
-  balancePillText: { color: '#7c3aed', fontWeight: '700', fontSize: 14 },
-  section: { marginBottom: 20 },
-  sectionLabel: { fontSize: 12, color: '#9ca3af', fontWeight: '600', textTransform: 'uppercase', marginBottom: 8 },
-  menuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-  },
-  menuIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#ede9fe',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  menuLabel: { flex: 1, fontSize: 15, color: '#111827', fontWeight: '500' },
-  signOutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fee2e2',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 24,
-    gap: 8,
-  },
-  signOutText: { color: '#b91c1c', fontSize: 15, fontWeight: '700' },
-  version: { textAlign: 'center', fontSize: 12, color: '#9ca3af' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    content: { padding: 20, paddingBottom: 100 },
+    title: { fontSize: 24, fontFamily: 'Poppins_700Bold', color: c.text, marginBottom: 20 },
+    profileCard: {
+      backgroundColor: c.card,
+      borderRadius: 20,
+      padding: 24,
+      alignItems: 'center',
+      marginBottom: 24,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    avatar: {
+      width: 80, height: 80, borderRadius: 40,
+      backgroundColor: '#7C5CFC',
+      justifyContent: 'center', alignItems: 'center', marginBottom: 12,
+    },
+    avatarText: { color: '#fff', fontSize: 28, fontFamily: 'Poppins_700Bold' },
+    fullName: { fontSize: 20, fontFamily: 'Poppins_700Bold', color: c.text, marginBottom: 4 },
+    email: { fontSize: 13, color: c.textSub, marginBottom: 12 },
+    balancePill: { backgroundColor: c.accentLight, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6 },
+    balancePillText: { color: c.accentText, fontFamily: 'Poppins_700Bold', fontSize: 14 },
+    section: { marginBottom: 20 },
+    sectionLabel: { fontSize: 12, color: c.textMuted, fontFamily: 'Poppins_600SemiBold', textTransform: 'uppercase', marginBottom: 8 },
+    menuRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.card,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 8,
+    },
+    menuIconWrap: {
+      width: 32, height: 32, borderRadius: 8,
+      backgroundColor: c.accentLight,
+      justifyContent: 'center', alignItems: 'center', marginRight: 12,
+    },
+    menuLabel: { flex: 1, fontSize: 15, color: c.text, fontFamily: 'Poppins_500Medium' },
+    signOutBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#fee2e2',
+      borderRadius: 14,
+      padding: 16,
+      marginBottom: 24,
+      gap: 8,
+    },
+    signOutText: { color: '#b91c1c', fontSize: 15, fontFamily: 'Poppins_700Bold' },
+    version: { textAlign: 'center', fontSize: 12, color: c.textMuted },
+  });
+}

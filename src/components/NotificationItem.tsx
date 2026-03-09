@@ -1,5 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { formatDistanceToNow, parseISO } from 'date-fns';
+import { useTheme } from '@/hooks/useTheme';
+import { ThemeColors } from '@/lib/theme';
 import { Icon, IconName } from './Icon';
 
 interface Notification {
@@ -26,6 +28,8 @@ const TYPE_ICONS: Record<string, IconName> = {
 };
 
 export function NotificationItem({ item, onPress }: Props) {
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const iconName: IconName = TYPE_ICONS[item.type] ?? 'bell';
   const timeAgo = formatDistanceToNow(parseISO(item.created_at), { addSuffix: true });
 
@@ -37,52 +41,30 @@ export function NotificationItem({ item, onPress }: Props) {
     >
       {!item.read && <View style={styles.dot} />}
       <View style={styles.iconWrap}>
-        <Icon name={iconName} size={18} color={item.read ? '#6b7280' : '#7C5CFC'} />
+        <Icon name={iconName} size={18} color={item.read ? colors.textSub : '#7C5CFC'} />
       </View>
       <View style={styles.content}>
-        <Text style={styles.title} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text style={styles.message} numberOfLines={2}>
-          {item.message}
-        </Text>
+        <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.message} numberOfLines={2}>{item.message}</Text>
         <Text style={styles.time}>{timeAgo}</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#fff',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: 'transparent',
-  },
-  unread: { borderLeftColor: '#7C5CFC', backgroundColor: '#faf5ff' },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#7C5CFC',
-    marginTop: 6,
-    marginRight: 4,
-  },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#f3f4f6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  content: { flex: 1 },
-  title: { fontSize: 14, fontWeight: '600', color: '#111827', marginBottom: 2 },
-  message: { fontSize: 13, color: '#6b7280', lineHeight: 18 },
-  time: { fontSize: 11, color: '#9ca3af', marginTop: 4 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: {
+      flexDirection: 'row', alignItems: 'flex-start',
+      backgroundColor: c.card, padding: 14, borderRadius: 12, marginBottom: 8,
+      borderLeftWidth: 3, borderLeftColor: 'transparent',
+    },
+    unread: { borderLeftColor: '#7C5CFC', backgroundColor: c.notifUnread },
+    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7C5CFC', marginTop: 6, marginRight: 4 },
+    iconWrap: { width: 36, height: 36, borderRadius: 10, backgroundColor: c.cardAlt, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    content: { flex: 1 },
+    title: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: c.text, marginBottom: 2 },
+    message: { fontSize: 13, color: c.textSub, lineHeight: 18 },
+    time: { fontSize: 11, color: c.textMuted, marginTop: 4 },
+  });
+}

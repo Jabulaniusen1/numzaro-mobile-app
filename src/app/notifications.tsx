@@ -15,16 +15,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
+import { useTheme } from '@/hooks/useTheme';
+import { ThemeColors } from '@/lib/theme';
 import { NotificationItem } from '@/components/NotificationItem';
 import { Icon } from '@/components/Icon';
 
 const TYPES = [
-  { key: 'all', label: 'All' },
-  { key: 'transaction', label: 'Transactions' },
-  { key: 'billing', label: 'Billing' },
-  { key: 'subscription_reminder', label: 'Reminders' },
-  { key: 'expiration_reminder', label: 'Expiration' },
-  { key: 'payment_failed', label: 'Failed' },
+  { key: 'all',                   label: 'All',          color: '#6b7280' },
+  { key: 'transaction',           label: 'Transactions', color: '#22c55e' },
+  { key: 'billing',               label: 'Billing',      color: '#3b82f6' },
+  { key: 'subscription_reminder', label: 'Reminders',    color: '#f59e0b' },
+  { key: 'expiration_reminder',   label: 'Expiration',   color: '#8b5cf6' },
+  { key: 'payment_failed',        label: 'Failed',       color: '#ef4444' },
 ];
 
 export default function NotificationsScreen() {
@@ -32,6 +34,8 @@ export default function NotificationsScreen() {
   const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.userId);
   const [selectedType, setSelectedType] = useState('all');
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['notifications', userId, selectedType],
@@ -113,7 +117,7 @@ export default function NotificationsScreen() {
           <Icon name="chevronLeft" size={22} color="#7C5CFC" />
         </TouchableOpacity>
         <View style={styles.headerTitleRow}>
-          <Icon name="bell" size={18} color="#111827" />
+          <Icon name="bell" size={18} color={colors.text} />
           <Text style={styles.headerTitle}>
             Notifications
             {unreadCount > 0 && (
@@ -139,10 +143,11 @@ export default function NotificationsScreen() {
         {TYPES.map((t) => (
           <TouchableOpacity
             key={t.key}
-            style={[styles.pill, selectedType === t.key && styles.pillActive]}
+            style={[styles.filterChip, selectedType === t.key && { backgroundColor: t.color, borderColor: t.color }]}
             onPress={() => setSelectedType(t.key)}
           >
-            <Text style={[styles.pillText, selectedType === t.key && styles.pillTextActive]}>
+            {selectedType !== t.key && <View style={[styles.filterDot, { backgroundColor: t.color }]} />}
+            <Text style={[styles.filterChipText, selectedType === t.key && { color: '#fff' }]}>
               {t.label}
             </Text>
           </TouchableOpacity>
@@ -176,35 +181,27 @@ export default function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F2FA' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    paddingBottom: 8,
-  },
-  backBtn: { padding: 4 },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#111827', textAlign: 'center' },
-  unreadBadge: { color: '#7C5CFC' },
-  markAllBtn: { paddingHorizontal: 4 },
-  markAllText: { color: '#7C5CFC', fontSize: 13, fontWeight: '600' },
-  filterScroll: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  pillActive: { backgroundColor: '#7C5CFC', borderColor: '#7C5CFC' },
-  pillText: { fontSize: 13, color: '#374151', fontWeight: '500' },
-  pillTextActive: { color: '#fff' },
-  listContent: { padding: 16, paddingTop: 4, paddingBottom: 60 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
-  emptyText: { color: '#6b7280', fontSize: 14 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 8 },
+    backBtn: { padding: 4 },
+    headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center' },
+    headerTitle: { fontSize: 18, fontFamily: 'Poppins_700Bold', color: c.text, textAlign: 'center' },
+    unreadBadge: { color: '#7C5CFC' },
+    markAllBtn: { paddingHorizontal: 4 },
+    markAllText: { color: '#7C5CFC', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
+    filterScroll: { paddingHorizontal: 16, paddingBottom: 10, gap: 8, alignItems: 'center' },
+    filterChip: {
+      flexDirection: 'row', alignItems: 'center', height: 30,
+      paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20,
+      backgroundColor: c.card, borderWidth: 1, borderColor: c.border, gap: 5,
+    },
+    filterDot: { width: 6, height: 6, borderRadius: 3 },
+    filterChipText: { fontSize: 12, color: c.text, fontFamily: 'Poppins_500Medium' },
+    listContent: { padding: 16, paddingTop: 4, paddingBottom: 60 },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
+    emptyText: { color: c.textSub, fontSize: 14 },
+  });
+}

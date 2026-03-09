@@ -14,34 +14,40 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
+import { useTheme } from '@/hooks/useTheme';
+import { ThemeColors } from '@/lib/theme';
 import { OrderCard } from '@/components/OrderCard';
 import { Icon } from '@/components/Icon';
 
-const STATUSES = ['all', 'Pending', 'In Progress', 'Partial', 'Completed', 'Cancelled'];
+const STATUSES = [
+  { key: 'all',         label: 'All',         color: '#6b7280' },
+  { key: 'Pending',     label: 'Pending',      color: '#f59e0b' },
+  { key: 'In Progress', label: 'In Progress',  color: '#3b82f6' },
+  { key: 'Partial',     label: 'Partial',      color: '#8b5cf6' },
+  { key: 'Completed',   label: 'Completed',    color: '#22c55e' },
+  { key: 'Cancelled',   label: 'Cancelled',    color: '#ef4444' },
+];
 
 export default function OrdersScreen() {
   const router = useRouter();
   const userId = useAppStore((s) => s.userId);
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [page, setPage] = useState(1);
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['orders', page, selectedStatus, userId],
     queryFn: async () => {
       const from = (page - 1) * 20;
       const to = from + 19;
-
       let query = supabase
         .from('orders')
         .select('*, services(name, category, type)', { count: 'exact' })
         .eq('user_id', userId!)
         .order('created_at', { ascending: false })
         .range(from, to);
-
-      if (selectedStatus !== 'all') {
-        query = query.eq('status', selectedStatus);
-      }
-
+      if (selectedStatus !== 'all') query = query.eq('status', selectedStatus);
       const { data: orders, count, error } = await query;
       if (error) throw error;
       const totalPages = count ? Math.ceil(count / 20) : 1;
@@ -55,10 +61,9 @@ export default function OrdersScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
-          <Icon name="box" size={22} color="#111827" />
+          <Icon name="box" size={22} color={colors.text} />
           <Text style={styles.headerTitle}>My Orders</Text>
         </View>
         <TouchableOpacity onPress={() => refetch()} style={styles.refreshBtn}>
@@ -66,29 +71,28 @@ export default function OrdersScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Status Filter Pills */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.filterScroll}
       >
-        {STATUSES.map((s) => (
-          <TouchableOpacity
-            key={s}
-            style={[styles.pill, selectedStatus === s && styles.pillActive]}
-            onPress={() => {
-              setSelectedStatus(s);
-              setPage(1);
-            }}
-          >
-            <Text style={[styles.pillText, selectedStatus === s && styles.pillTextActive]}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {STATUSES.map((s) => {
+          const active = selectedStatus === s.key;
+          return (
+            <TouchableOpacity
+              key={s.key}
+              style={[styles.filterChip, active && { backgroundColor: s.color, borderColor: s.color }]}
+              onPress={() => { setSelectedStatus(s.key); setPage(1); }}
+            >
+              {!active && <View style={[styles.filterDot, { backgroundColor: s.color }]} />}
+              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                {s.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
-      {/* List */}
       {isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#7C5CFC" />
@@ -107,7 +111,9 @@ export default function OrdersScreen() {
               <Icon name="box" size={48} color="#d1d5db" />
               <Text style={styles.emptyTitle}>No orders found</Text>
               <Text style={styles.emptyText}>
-                {selectedStatus !== 'all' ? `No ${selectedStatus.toLowerCase()} orders.` : 'You haven\'t placed any orders yet.'}
+                {selectedStatus !== 'all'
+                  ? `No ${selectedStatus.toLowerCase()} orders yet.`
+                  : "You haven't placed any orders yet."}
               </Text>
               <TouchableOpacity
                 style={styles.emptyBtn}
@@ -126,21 +132,15 @@ export default function OrdersScreen() {
                   style={[styles.pageBtn, page === 1 && styles.pageBtnDisabled]}
                 >
                   <Icon name="arrowLeft" size={13} color={page === 1 ? '#9ca3af' : '#fff'} />
-                  <Text style={[styles.pageBtnText, page === 1 && styles.pageBtnTextDisabled]}>
-                    Prev
-                  </Text>
+                  <Text style={[styles.pageBtnText, page === 1 && styles.pageBtnTextDisabled]}>Prev</Text>
                 </TouchableOpacity>
-                <Text style={styles.pageLabel}>
-                  Page {page} of {totalPages}
-                </Text>
+                <Text style={styles.pageLabel}>Page {page} of {totalPages}</Text>
                 <TouchableOpacity
                   onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
                   style={[styles.pageBtn, page === totalPages && styles.pageBtnDisabled]}
                 >
-                  <Text style={[styles.pageBtnText, page === totalPages && styles.pageBtnTextDisabled]}>
-                    Next
-                  </Text>
+                  <Text style={[styles.pageBtnText, page === totalPages && styles.pageBtnTextDisabled]}>Next</Text>
                   <Icon name="arrowRight" size={13} color={page === totalPages ? '#9ca3af' : '#fff'} />
                 </TouchableOpacity>
               </View>
@@ -152,60 +152,34 @@ export default function OrdersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F2FA' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    paddingBottom: 8,
-  },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#111827' },
-  refreshBtn: { padding: 8 },
-  filterScroll: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  pillActive: { backgroundColor: '#7C5CFC', borderColor: '#7C5CFC' },
-  pillText: { fontSize: 13, color: '#374151', fontWeight: '500' },
-  pillTextActive: { color: '#fff' },
-  listContent: { padding: 16, paddingTop: 4, paddingBottom: 100 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 8 },
-  emptyText: { fontSize: 13, color: '#6b7280', textAlign: 'center', marginBottom: 20 },
-  emptyBtn: {
-    backgroundColor: '#7C5CFC',
-    borderRadius: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-  },
-  emptyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  pagination: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-    paddingBottom: 20,
-  },
-  pageBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#7C5CFC',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  pageBtnDisabled: { backgroundColor: '#e5e7eb' },
-  pageBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  pageBtnTextDisabled: { color: '#9ca3af' },
-  pageLabel: { fontSize: 13, color: '#374151', fontWeight: '500' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 10 },
+    headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    headerTitle: { fontSize: 22, fontFamily: 'Poppins_700Bold', color: c.text },
+    refreshBtn: { padding: 8 },
+    filterScroll: { paddingHorizontal: 16, paddingBottom: 10, paddingTop: 2, gap: 6 },
+    filterChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20,
+      backgroundColor: c.card, borderWidth: 1, borderColor: c.border, height: 30,
+    },
+    filterDot: { width: 6, height: 6, borderRadius: 3 },
+    filterChipText: { fontSize: 12, color: c.text, fontFamily: 'Poppins_500Medium' },
+    filterChipTextActive: { color: '#fff', fontFamily: 'Poppins_600SemiBold' },
+    listContent: { padding: 16, paddingTop: 4, paddingBottom: 100 },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
+    emptyTitle: { fontSize: 16, fontFamily: 'Poppins_700Bold', color: c.text },
+    emptyText: { fontSize: 13, color: c.textSub, textAlign: 'center' },
+    emptyBtn: { backgroundColor: c.accent, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, marginTop: 4 },
+    emptyBtnText: { color: '#fff', fontFamily: 'Poppins_700Bold', fontSize: 14 },
+    pagination: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, paddingBottom: 20 },
+    pageBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accent, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+    pageBtnDisabled: { backgroundColor: c.border },
+    pageBtnText: { color: '#fff', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
+    pageBtnTextDisabled: { color: c.textMuted },
+    pageLabel: { fontSize: 13, color: c.text, fontFamily: 'Poppins_500Medium' },
+  });
+}

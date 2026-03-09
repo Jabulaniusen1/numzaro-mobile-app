@@ -12,6 +12,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
+import { useTheme } from '@/hooks/useTheme';
+import { ThemeColors } from '@/lib/theme';
 import { BalanceCard } from '@/components/BalanceCard';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Icon, IconName } from '@/components/Icon';
@@ -35,6 +37,8 @@ export default function DashboardScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.userId);
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
 
   const { data: profile } = useQuery({
     queryKey: ['profile', userId],
@@ -76,7 +80,6 @@ export default function DashboardScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="#7C5CFC" />}
     >
-      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Dashboard</Text>
@@ -86,14 +89,12 @@ export default function DashboardScreen() {
           style={styles.notifBtn}
           onPress={() => router.push('/notifications' as any)}
         >
-          <Icon name="bell" size={22} color="#374151" />
+          <Icon name="bell" size={22} color={colors.text} />
         </TouchableOpacity>
       </View>
 
-      {/* Balance Card */}
       <BalanceCard />
 
-      {/* Quick Access */}
       <Text style={styles.sectionTitle}>Quick Access</Text>
       <View style={styles.quickGrid}>
         {QUICK_LINKS.map((link) => (
@@ -110,7 +111,6 @@ export default function DashboardScreen() {
         ))}
       </View>
 
-      {/* Recent Orders */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent Orders</Text>
         <TouchableOpacity onPress={() => router.push('/(tabs)/orders' as any)}>
@@ -124,10 +124,7 @@ export default function DashboardScreen() {
         <View style={styles.emptyBox}>
           <Icon name="box" size={40} color="#d1d5db" />
           <Text style={styles.emptyText}>No orders yet</Text>
-          <TouchableOpacity
-            style={styles.emptyBtn}
-            onPress={() => router.push('/(tabs)/services' as any)}
-          >
+          <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/(tabs)/services' as any)}>
             <Text style={styles.emptyBtnText}>Browse Services</Text>
           </TouchableOpacity>
         </View>
@@ -153,67 +150,54 @@ export default function DashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F2FA' },
-  content: { paddingBottom: 100 },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    paddingTop: 60,
-  },
-  headerTitle: { fontSize: 26, fontWeight: '700', color: '#111827' },
-  headerSub: { fontSize: 14, color: '#6b7280', marginTop: 2 },
-  notifBtn: { padding: 8, backgroundColor: '#fff', borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingRight: 16,
-    marginTop: 8,
-  },
-  viewAll: { color: '#7C5CFC', fontSize: 13, fontWeight: '600' },
-  quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 12,
-    marginBottom: 24,
-    gap: 8,
-  },
-  quickItem: {
-    width: '47%',
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'center',
-  },
-  quickIcon: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  quickLabel: { fontSize: 13, fontWeight: '600', color: '#111827', textAlign: 'center' },
-  orderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 12,
-    marginHorizontal: 16,
-    marginBottom: 8,
-  },
-  orderLeft: { flex: 1, marginRight: 8 },
-  orderName: { fontSize: 13, fontWeight: '600', color: '#111827' },
-  orderDate: { fontSize: 11, color: '#9ca3af', marginTop: 2 },
-  orderRight: { alignItems: 'flex-end', gap: 4 },
-  orderCharge: { fontSize: 13, fontWeight: '700', color: '#111827' },
-  emptyBox: { alignItems: 'center', padding: 32, gap: 8 },
-  emptyText: { color: '#6b7280', fontSize: 14, marginBottom: 8 },
-  emptyBtn: { backgroundColor: '#7C5CFC', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
-  emptyBtnText: { color: '#fff', fontWeight: '600' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    content: { paddingBottom: 100 },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 20,
+      paddingTop: 60,
+    },
+    headerTitle: { fontSize: 26, fontFamily: 'Poppins_700Bold', color: c.text },
+    headerSub: { fontSize: 14, color: c.textSub, marginTop: 2 },
+    notifBtn: {
+      padding: 8,
+      backgroundColor: c.card,
+      borderRadius: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    sectionTitle: { fontSize: 16, fontFamily: 'Poppins_700Bold', color: c.text, paddingHorizontal: 16, marginBottom: 12 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 16, marginTop: 8 },
+    viewAll: { color: c.accent, fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
+    quickGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, marginBottom: 24, gap: 8 },
+    quickItem: { width: '47%', backgroundColor: c.card, borderRadius: 14, padding: 16, alignItems: 'center' },
+    quickIcon: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+    quickLabel: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.text, textAlign: 'center' },
+    orderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: c.card,
+      borderRadius: 10,
+      padding: 12,
+      marginHorizontal: 16,
+      marginBottom: 8,
+    },
+    orderLeft: { flex: 1, marginRight: 8 },
+    orderName: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.text },
+    orderDate: { fontSize: 11, color: c.textMuted, marginTop: 2 },
+    orderRight: { alignItems: 'flex-end', gap: 4 },
+    orderCharge: { fontSize: 13, fontFamily: 'Poppins_700Bold', color: c.text },
+    emptyBox: { alignItems: 'center', padding: 32, gap: 8 },
+    emptyText: { color: c.textSub, fontSize: 14, marginBottom: 8 },
+    emptyBtn: { backgroundColor: c.accent, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+    emptyBtnText: { color: '#fff', fontFamily: 'Poppins_600SemiBold' },
+  });
+}
