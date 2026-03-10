@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { FontAwesome5 } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { createOrder } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
@@ -34,30 +35,52 @@ interface Service {
   cancel_allowed: boolean;
 }
 
-const PLATFORM_COLORS: Record<string, string> = {
-  instagram:  '#E1306C',
-  facebook:   '#1877F2',
-  tiktok:     '#010101',
-  youtube:    '#FF0000',
-  twitter:    '#1DA1F2',
-  x:          '#222222',
-  telegram:   '#0088CC',
-  linkedin:   '#0A66C2',
-  spotify:    '#1DB954',
-  discord:    '#5865F2',
-  snapchat:   '#F7C900',
-  pinterest:  '#E60023',
-  threads:    '#101010',
-  whatsapp:   '#25D366',
-  twitch:     '#9146FF',
+interface PlatformMeta { color: string; icon: string; iconSet?: 'fa5' | 'text'; iconText?: string }
+
+const PLATFORMS: Record<string, PlatformMeta> = {
+  instagram: { color: '#E1306C', icon: 'instagram',       iconSet: 'fa5' },
+  facebook:  { color: '#1877F2', icon: 'facebook',        iconSet: 'fa5' },
+  tiktok:    { color: '#010101', icon: 'tiktok',          iconSet: 'fa5' },
+  youtube:   { color: '#FF0000', icon: 'youtube',         iconSet: 'fa5' },
+  twitter:   { color: '#1DA1F2', icon: 'twitter',         iconSet: 'fa5' },
+  x:         { color: '#222222', icon: 'twitter',         iconSet: 'fa5' },
+  telegram:  { color: '#0088CC', icon: 'telegram',        iconSet: 'fa5' },
+  linkedin:  { color: '#0A66C2', icon: 'linkedin',        iconSet: 'fa5' },
+  spotify:   { color: '#1DB954', icon: 'spotify',         iconSet: 'fa5' },
+  discord:   { color: '#5865F2', icon: 'discord',         iconSet: 'fa5' },
+  snapchat:  { color: '#F7C900', icon: 'snapchat',        iconSet: 'fa5' },
+  pinterest: { color: '#E60023', icon: 'pinterest',       iconSet: 'fa5' },
+  threads:   { color: '#101010', icon: 'at',              iconSet: 'fa5' },
+  whatsapp:  { color: '#25D366', icon: 'whatsapp',        iconSet: 'fa5' },
+  twitch:    { color: '#9146FF', icon: 'twitch',          iconSet: 'fa5' },
+  soundcloud:{ color: '#FF5500', icon: 'soundcloud',      iconSet: 'fa5' },
+  reddit:    { color: '#FF4500', icon: 'reddit',          iconSet: 'fa5' },
+  vimeo:     { color: '#1AB7EA', icon: 'vimeo',           iconSet: 'fa5' },
+  tumblr:    { color: '#35465C', icon: 'tumblr',          iconSet: 'fa5' },
 };
 
-function getPlatformColor(category: string): string {
+function getPlatformMeta(category: string): PlatformMeta {
   const key = category.toLowerCase().trim();
-  for (const [name, color] of Object.entries(PLATFORM_COLORS)) {
-    if (key.includes(name)) return color;
+  for (const [name, meta] of Object.entries(PLATFORMS)) {
+    if (key.includes(name)) return meta;
   }
-  return '#7C5CFC';
+  return { color: '#7C5CFC', icon: 'star', iconSet: 'fa5' };
+}
+
+function getPlatformColor(category: string): string {
+  return getPlatformMeta(category).color;
+}
+
+function PlatformIcon({ category, size, color }: { category: string; size: number; color?: string }) {
+  const meta = getPlatformMeta(category);
+  return (
+    <FontAwesome5
+      name={meta.icon}
+      size={size}
+      color={color ?? '#fff'}
+      brand
+    />
+  );
 }
 
 export default function ServicesScreen() {
@@ -173,6 +196,7 @@ export default function ServicesScreen() {
         </View>
 
         <FlatList
+          key="platforms-grid"
           data={platforms}
           keyExtractor={(item) => item.name}
           numColumns={2}
@@ -187,9 +211,9 @@ export default function ServicesScreen() {
                 onPress={() => setSelectedPlatform(item.name)}
                 activeOpacity={0.82}
               >
-                <Text style={[styles.platformBgLetter, { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }]}>
-                  {item.name.charAt(0).toUpperCase()}
-                </Text>
+                <View style={styles.platformIconWrap}>
+                  <PlatformIcon category={item.name} size={28} color={isDark ? '#fff' : '#111827'} />
+                </View>
                 <Text style={[styles.platformName, !isDark && { color: '#111827' }]}>
                   {item.name}
                 </Text>
@@ -250,6 +274,7 @@ export default function ServicesScreen() {
       </View>
 
       <FlatList
+        key="services-list"
         data={filteredServices}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
@@ -259,16 +284,14 @@ export default function ServicesScreen() {
             onPress={() => { setSelectedService(item); setOrderModalVisible(true); }}
           >
             <View style={[styles.serviceIconWrap, { backgroundColor: platformColor + '1A' }]}>
-              <Text style={[styles.serviceIconLetter, { color: platformColor }]}>
-                {item.name.charAt(0).toUpperCase()}
-              </Text>
+              <PlatformIcon category={selectedPlatform} size={20} color={platformColor} />
             </View>
             <View style={styles.serviceInfo}>
               <Text style={styles.serviceName} numberOfLines={2}>{item.name}</Text>
               <View style={styles.serviceMetaRow}>
                 <View style={[styles.rateTag, { backgroundColor: platformColor + '18' }]}>
                   <Text style={[styles.rateTagText, { color: platformColor }]}>
-                    ${Number(item.rate).toFixed(4)}/1k
+                    ₦{Number(item.rate).toFixed(4)}/1k
                   </Text>
                 </View>
                 <Text style={styles.serviceQty}>
@@ -301,9 +324,7 @@ export default function ServicesScreen() {
               <>
                 <View style={styles.modalService}>
                   <View style={[styles.serviceIconWrap, { backgroundColor: platformColor + '1A' }]}>
-                    <Text style={[styles.serviceIconLetter, { color: platformColor }]}>
-                      {selectedService.name.charAt(0).toUpperCase()}
-                    </Text>
+                    <PlatformIcon category={selectedService.category} size={20} color={platformColor} />
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.modalServiceName}>{selectedService.name}</Text>
@@ -337,11 +358,11 @@ export default function ServicesScreen() {
                 <View style={styles.summary}>
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Rate</Text>
-                    <Text style={styles.summaryVal}>${Number(selectedService.rate).toFixed(4)} / 1000</Text>
+                    <Text style={styles.summaryVal}>₦{Number(selectedService.rate).toFixed(4)} / 1000</Text>
                   </View>
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Estimated Charge</Text>
-                    <Text style={[styles.summaryVal, { color: '#7C5CFC' }]}>${charge.toFixed(4)}</Text>
+                    <Text style={[styles.summaryVal, { color: '#7C5CFC' }]}>₦{charge.toFixed(4)}</Text>
                   </View>
                   <View style={[styles.summaryRow, { marginBottom: 0 }]}>
                     <Text style={styles.summaryLabel}>Your Balance</Text>
@@ -357,7 +378,7 @@ export default function ServicesScreen() {
                   {mutation.isPending ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.submitBtnText}>Place Order — ${charge.toFixed(4)}</Text>
+                    <Text style={styles.submitBtnText}>Place Order — ₦{charge.toFixed(4)}</Text>
                   )}
                 </TouchableOpacity>
 
@@ -385,10 +406,10 @@ function makeStyles(c: ThemeColors) {
     platformRow: { gap: 12, marginBottom: 12 },
     platformCard: {
       flex: 1, borderRadius: 20, padding: 18, minHeight: 120,
-      justifyContent: 'flex-end', overflow: 'hidden',
+      justifyContent: 'space-between', overflow: 'hidden',
       shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3,
     },
-    platformBgLetter: { position: 'absolute', top: 8, right: 12, fontSize: 56, fontFamily: 'Poppins_800ExtraBold' },
+    platformIconWrap: { marginBottom: 10 },
     platformName: { fontSize: 16, fontFamily: 'Poppins_700Bold', color: '#fff', marginBottom: 2 },
     platformCount: { fontSize: 12, color: 'rgba(255,255,255,0.7)', fontFamily: 'Poppins_500Medium' },
     servicesHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, gap: 12 },
@@ -411,7 +432,6 @@ function makeStyles(c: ThemeColors) {
       shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
     },
     serviceIconWrap: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    serviceIconLetter: { fontSize: 18, fontFamily: 'Poppins_700Bold' },
     serviceInfo: { flex: 1, marginLeft: 12 },
     serviceName: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.text, marginBottom: 6 },
     serviceMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

@@ -141,7 +141,7 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.orderRight}>
               <StatusBadge status={order.status} />
-              <Text style={styles.orderCharge}>${Number(order.charge).toFixed(4)}</Text>
+              <Text style={styles.orderCharge}>₦{Number(order.charge).toFixed(4)}</Text>
             </View>
           </View>
         ))

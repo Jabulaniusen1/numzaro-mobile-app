@@ -37,6 +37,7 @@ export default function FundWalletScreen() {
   const [currency] = useState<'NGN'>('NGN');
   const [loading, setLoading] = useState(false);
   const [paystackUrl, setPaystackUrl] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
   const [verifiedAmount, setVerifiedAmount] = useState<number | null>(null);
 
   const parsedAmount = parseInt(amount.replace(/[^0-9]/g, ''), 10) || 0;
@@ -50,9 +51,14 @@ export default function FundWalletScreen() {
     setLoading(true);
     try {
       const res = await initWalletFund(parsedAmount, currency);
-      const url = res.authorization_url ?? res.data?.authorization_url;
+      const accessCode = res.access_code ?? res.data?.access_code;
+      const url =
+        res.authorization_url ??
+        res.data?.authorization_url ??
+        (accessCode ? `https://checkout.paystack.com/${accessCode}` : undefined);
       if (!url) throw new Error('No payment URL received from server.');
       setPaystackUrl(url);
+      setPaymentReference(res.reference ?? res.data?.reference ?? '');
       setStep('webview');
     } catch (e: any) {
       Alert.alert('Error', e.message);
@@ -73,7 +79,7 @@ export default function FundWalletScreen() {
     ) {
       // Extract reference
       const match = url.match(/(?:reference|trxref)=([^&]+)/);
-      const reference = match?.[1];
+      const reference = match?.[1] ?? paymentReference;
       if (!reference) return;
 
       setStep('verifying');

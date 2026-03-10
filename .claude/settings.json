@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx expo install react-native-toast-message)",
+      "Bash(npx expo install expo-blur)",
+      "Read(//Users/mac/Desktop/Client projects/social-booster/app/api/payments/verify-popup/**)",
+      "Read(//Users/mac/Desktop/Client projects/social-booster/app/api/payments/verify/**)",
+      "Read(//Users/mac/Desktop/Client projects/social-booster/app/api/wallet/fund/**)",
+      "Read(//Users/mac/Desktop/Client projects/social-booster/lib/supabase/**)",
+      "Read(//Users/mac/Desktop/Client projects/social-booster/**)"
+    ],
+    "additionalDirectories": [
+      "/Users/mac/Desktop/Client projects/social-booster/app/api/payments/verify-popup",
+      "/Users/mac/Desktop/Client projects/social-booster/app/api/smspool/pricing"
+    ]
+  }
+}

@@ -10,11 +10,13 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Icon } from '@/components/Icon';
+import Toast from 'react-native-toast-message';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -29,7 +31,12 @@ export default function LoginScreen() {
     setLoading(true);
     setError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
+    if (error) {
+      setError(error.message);
+    } else {
+      Toast.show({ type: 'success', text1: 'Welcome back!', text2: 'You have signed in successfully.' });
+      router.replace('/(tabs)');
+    }
     setLoading(false);
   };
 

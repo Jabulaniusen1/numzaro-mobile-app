@@ -13,6 +13,7 @@ import {
 import { Link } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Icon } from '@/components/Icon';
+import Toast from 'react-native-toast-message';
 
 export default function SignupScreen() {
   const [fullName, setFullName] = useState('');
@@ -60,6 +61,7 @@ export default function SignupScreen() {
 
     setLoading(false);
     setSuccess(true);
+    Toast.show({ type: 'success', text1: 'Account created!', text2: 'Check your email to confirm your account.' });
   };
 
   if (success) {

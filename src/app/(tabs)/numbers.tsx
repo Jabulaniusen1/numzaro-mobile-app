@@ -83,14 +83,15 @@ type Mode = 'activation' | 'rental';
 type Step = 'service' | 'country' | 'confirm';
 
 interface SmsService {
-  ID: string;
+  code: string;
   name: string;
   logo?: string;
 }
 
 interface Country {
+  code: string;
   name: string;
-  short_name?: string;
+  flag?: string;
 }
 
 interface RentalOption {
@@ -134,7 +135,7 @@ export default function NumbersScreen() {
   // Pricing query
   const pricingParams = useMemo(() => {
     if (mode === 'activation' && selectedService && selectedCountry) {
-      return `service=${selectedService.ID}&country=${selectedCountry.short_name ?? selectedCountry.name}&mode=activation`;
+      return `service=${selectedService.code}&country=${selectedCountry.code}&mode=activation`;
     }
     return null;
   }, [mode, selectedService, selectedCountry]);
@@ -183,15 +184,19 @@ export default function NumbersScreen() {
   const handlePurchase = () => {
     const body: any = { mode };
     if (mode === 'activation') {
-      body.serviceCode = selectedService?.ID;
-      body.country = selectedCountry?.short_name ?? selectedCountry?.name;
+      body.serviceCode = selectedService?.code;
+      body.serviceName = selectedService?.name;
+      body.country = selectedCountry?.code;
+      body.countryName = selectedCountry?.name;
     } else {
-      body.country = selectedCountry?.short_name ?? selectedCountry?.name;
+      body.country = selectedCountry?.code;
+      body.countryName = selectedCountry?.name;
       body.duration = selectedRentalDuration;
     }
     mutation.mutate(body);
   };
 
+  const priceNGN = pricing?.priceNGN ?? 0;
   const price = pricing?.price ?? pricing?.cost ?? 0;
 
   const renderStep = () => {
@@ -292,7 +297,7 @@ export default function NumbersScreen() {
                     setStep('confirm');
                   }}
                 >
-                  <Text style={styles.flagEmoji}>{countryFlag(item.short_name, item.name)}</Text>
+                  <Text style={styles.flagEmoji}>{item.flag ?? countryFlag(item.code, item.name)}</Text>
                   <Text style={styles.gridLabel} numberOfLines={2}>{item.name}</Text>
                 </TouchableOpacity>
               )}
@@ -317,7 +322,7 @@ export default function NumbersScreen() {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Country</Text>
                 <View style={styles.summaryCountryVal}>
-                  <Text style={{ fontSize: 16 }}>{countryFlag(selectedCountry.short_name, selectedCountry.name)}</Text>
+                  <Text style={{ fontSize: 16 }}>{selectedCountry.flag ?? countryFlag(selectedCountry.code, selectedCountry.name)}</Text>
                   <Text style={styles.summaryVal}>{selectedCountry.name}</Text>
                 </View>
               </View>
@@ -356,7 +361,7 @@ export default function NumbersScreen() {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Price</Text>
                 <Text style={[styles.summaryVal, { color: '#7C5CFC', fontWeight: '700' }]}>
-                  ${Number(price).toFixed(4)}
+                  {format(priceNGN || price)}
                 </Text>
               </View>
             )}
@@ -376,7 +381,7 @@ export default function NumbersScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.buyBtnText}>
-                {mode === 'activation' ? 'Buy' : 'Rent'} Number — ${Number(price).toFixed(4)}
+                {mode === 'activation' ? 'Buy' : 'Rent'} Number — {format(priceNGN || price)}
               </Text>
             )}
           </TouchableOpacity>

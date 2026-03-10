@@ -17,6 +17,7 @@ import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/hooks/useTheme';
 import { ActivityIndicator, View, Text, TextInput } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import Toast from 'react-native-toast-message';
 
 // Apply Poppins globally to all Text and TextInput components
 (Text as any).defaultProps = { style: { fontFamily: 'Poppins_400Regular' } };
@@ -82,6 +83,7 @@ export default function RootLayout() {
         <Stack.Screen name="fund-wallet" options={{ headerShown: false }} />
       </Stack>
       {!session && <Redirect href="/auth/login" />}
+      <Toast />
     </QueryClientProvider>
   );
 }
