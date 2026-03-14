@@ -60,6 +60,23 @@ const PLATFORMS: Record<string, PlatformMeta> = {
   tumblr:    { color: '#35465C', icon: 'tumblr',          iconSet: 'fa5' },
 };
 
+function normalizePlatform(value: string) {
+  return value.toLowerCase().trim();
+}
+
+function getPlatformKey(category: string): string {
+  const normalized = normalizePlatform(category);
+  for (const name of Object.keys(PLATFORMS)) {
+    if (normalized.includes(name)) return name;
+  }
+  return category.trim();
+}
+
+function getPlatformLabel(key: string): string {
+  if (PLATFORMS[key]) return key.charAt(0).toUpperCase() + key.slice(1);
+  return key;
+}
+
 function getPlatformMeta(category: string): PlatformMeta {
   const key = category.toLowerCase().trim();
   for (const [name, meta] of Object.entries(PLATFORMS)) {
@@ -118,34 +135,36 @@ export default function ServicesScreen() {
     const seen = new Set<string>();
     services.forEach((s) => {
       if (!s.category) return;
-      const key = s.category.toLowerCase();
-      for (const name of Object.keys(PLATFORMS)) {
-        if (key.includes(name)) { seen.add(name); break; }
-      }
+      seen.add(getPlatformKey(s.category));
     });
     return Array.from(seen);
   }, [services]);
 
   const platforms = useMemo(() => {
-    const map = new Map<string, number>();
-    services.forEach((s) => {
-      if (s.category) map.set(s.category, (map.get(s.category) ?? 0) + 1);
+    let all = platformFilters.map((key) => {
+      const count = services.reduce((acc, s) => {
+        if (!s.category) return acc;
+        return normalizePlatform(s.category).includes(normalizePlatform(key)) ? acc + 1 : acc;
+      }, 0);
+      return { key, count, label: getPlatformLabel(key) };
     });
-    let all = Array.from(map.entries()).map(([name, count]) => ({ name, count }));
 
     // Apply platform chip filter
     if (activePlatformFilter) {
-      all = all.filter((p) => p.name.toLowerCase().includes(activePlatformFilter));
+      const activeKey = normalizePlatform(activePlatformFilter);
+      all = all.filter((p) => normalizePlatform(p.key) === activeKey);
     }
 
     // Apply search
     if (!platformSearch.trim()) return all;
-    const q = platformSearch.toLowerCase();
-    return all.filter((p) => p.name.toLowerCase().includes(q));
-  }, [services, platformSearch, activePlatformFilter]);
+    const q = normalizePlatform(platformSearch);
+    return all.filter((p) => normalizePlatform(p.label).includes(q));
+  }, [services, platformSearch, activePlatformFilter, platformFilters]);
 
   const filteredServices = useMemo(() => {
-    const list = selectedPlatform ? services.filter((s) => s.category === selectedPlatform) : [];
+    if (!selectedPlatform) return [];
+    const key = normalizePlatform(selectedPlatform);
+    const list = services.filter((s) => s.category && normalizePlatform(s.category).includes(key));
     if (!search.trim()) return list;
     const q = search.toLowerCase();
     return list.filter((s) => s.name.toLowerCase().includes(q));
@@ -235,7 +254,7 @@ export default function ServicesScreen() {
           </TouchableOpacity>
 
           {platformFilters.map((key) => {
-            const meta = PLATFORMS[key];
+            const meta = getPlatformMeta(key);
             const isActive = activePlatformFilter === key;
             return (
               <TouchableOpacity
@@ -245,7 +264,7 @@ export default function ServicesScreen() {
               >
                 {!isActive && <View style={[styles.filterDot, { backgroundColor: meta.color }]} />}
                 <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
-                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                  {getPlatformLabel(key)}
                 </Text>
               </TouchableOpacity>
             );
@@ -255,24 +274,24 @@ export default function ServicesScreen() {
         <FlatList
           key="platforms-grid"
           data={platforms}
-          keyExtractor={(item) => item.name}
+          keyExtractor={(item) => item.key}
           numColumns={2}
           columnWrapperStyle={styles.platformRow}
           contentContainerStyle={styles.platformGrid}
           renderItem={({ item }) => {
-            const color = getPlatformColor(item.name);
+            const color = getPlatformColor(item.key);
             const isDark = color !== '#F7C900';
             return (
               <TouchableOpacity
                 style={[styles.platformCard, { backgroundColor: color }]}
-                onPress={() => setSelectedPlatform(item.name)}
+                onPress={() => setSelectedPlatform(item.key)}
                 activeOpacity={0.82}
               >
                 <View style={styles.platformIconWrap}>
-                  <PlatformIcon category={item.name} size={28} color={isDark ? '#fff' : '#111827'} />
+                  <PlatformIcon category={item.key} size={28} color={isDark ? '#fff' : '#111827'} />
                 </View>
                 <Text style={[styles.platformName, !isDark && { color: '#111827' }]}>
-                  {item.name}
+                  {item.label}
                 </Text>
                 <Text style={[styles.platformCount, !isDark && { color: 'rgba(0,0,0,0.45)' }]}>
                   {item.count} service{item.count !== 1 ? 's' : ''}
@@ -293,6 +312,7 @@ export default function ServicesScreen() {
 
   // Services List
   const platformColor = getPlatformColor(selectedPlatform);
+  const selectedPlatformLabel = getPlatformLabel(selectedPlatform);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -307,7 +327,7 @@ export default function ServicesScreen() {
           <PlatformIcon category={selectedPlatform} size={20} color="#fff" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.servicesTitle}>{selectedPlatform}</Text>
+          <Text style={styles.servicesTitle}>{selectedPlatformLabel}</Text>
           <Text style={styles.servicesSubtitle}>{filteredServices.length} services</Text>
         </View>
       </View>
@@ -318,7 +338,7 @@ export default function ServicesScreen() {
           style={styles.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder={`Search ${selectedPlatform}...`}
+          placeholder={`Search ${selectedPlatformLabel}...`}
           placeholderTextColor={colors.textMuted}
         />
         {search.length > 0 && (
