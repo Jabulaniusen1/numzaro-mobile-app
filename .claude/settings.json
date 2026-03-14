@@ -7,11 +7,21 @@
       "Read(//Users/mac/Desktop/Client projects/social-booster/app/api/payments/verify/**)",
       "Read(//Users/mac/Desktop/Client projects/social-booster/app/api/wallet/fund/**)",
       "Read(//Users/mac/Desktop/Client projects/social-booster/lib/supabase/**)",
-      "Read(//Users/mac/Desktop/Client projects/social-booster/**)"
+      "Read(//Users/mac/Desktop/Client projects/social-booster/**)",
+      "Bash(find '/Users/mac/Desktop/Client projects/social-booster' -type d -not -path */node_modules/* -not -path */.next/* -not -path */.git/*)",
+      "Bash(xargs ls:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e \"const icons = require\\(''react-icons/fa''\\); const needed = [''FaFacebook'',''FaInstagram'',''FaTiktok'',''FaTwitter'',''FaDiscord'',''FaTelegram'',''FaWhatsapp'',''FaYoutube'',''FaSpotify'',''FaLinkedin'',''FaPinterest'',''FaSnapchatGhost'',''FaTwitch'']; needed.forEach\\(n => console.log\\(n, n in icons ? ''OK'' : ''MISSING''\\)\\)\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(head -5 \"/Users/mac/Desktop/Client projects/numzaro-mobile/numzaro/src/app/\\(tabs\\)/numbers.tsx\")",
+      "Read(//Users/mac/Desktop/Client projects/numzaro-mobile/**)",
+      "Read(//Users/mac/Desktop/Client projects/**)",
+      "Bash(find '/Users/mac/Desktop/Client projects' -maxdepth 4 -name pricing*)"
     ],
     "additionalDirectories": [
       "/Users/mac/Desktop/Client projects/social-booster/app/api/payments/verify-popup",
-      "/Users/mac/Desktop/Client projects/social-booster/app/api/smspool/pricing"
+      "/Users/mac/Desktop/Client projects/social-booster/app/api/smspool/pricing",
+      "/Users/mac/Desktop/Client projects/social-booster/app/dashboard/services"
     ]
   }
 }

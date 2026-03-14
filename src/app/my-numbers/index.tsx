@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,15 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { updateNumber } from '@/lib/api';
+import { updateNumber, cancelNumber } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/hooks/useTheme';
 import { ThemeColors } from '@/lib/theme';
 import { NumberCard } from '@/components/NumberCard';
-import { StatusBadge } from '@/components/StatusBadge';
-import { CountdownTimer } from '@/components/CountdownTimer';
 import { Icon } from '@/components/Icon';
 
 type TabType = 'active' | 'history';
@@ -113,6 +111,36 @@ export default function MyNumbersScreen() {
   }, [firstActive?.id]);
 
   const handleAction = async (numberId: string, action: string) => {
+    const num = numbers.find((n: any) => n.id === numberId);
+    const isRental = num?.number_type === 'rental';
+
+    if (action === 'cancel' && isRental) {
+      Alert.alert(
+        'Cancel Subscription',
+        'Are you sure you want to cancel this rental? This cannot be undone.',
+        [
+          { text: 'Keep', style: 'cancel' },
+          {
+            text: 'Cancel Subscription',
+            style: 'destructive',
+            onPress: async () => {
+              setActionLoading('cancel');
+              try {
+                await cancelNumber(numberId);
+                queryClient.invalidateQueries({ queryKey: ['numbers', userId] });
+                Alert.alert('Cancelled', 'Your rental subscription has been cancelled.');
+              } catch (e: any) {
+                Alert.alert('Error', e.message);
+              } finally {
+                setActionLoading(null);
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     setActionLoading(action);
     try {
       await updateNumber(numberId, action);

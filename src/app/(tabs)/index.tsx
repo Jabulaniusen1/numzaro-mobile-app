@@ -5,6 +5,7 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Image,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -81,8 +82,15 @@ export default function DashboardScreen() {
       refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="#7C5CFC" />}
     >
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Dashboard</Text>
+        <View style={styles.headerLeft}>
+          <View style={styles.headerTitleRow}>
+            <Image
+              source={require('@/assets/images/logos/icon color.png')}
+              style={styles.headerLogo}
+              resizeMode="contain"
+            />
+            <Text style={styles.headerTitle}>Dashboard</Text>
+          </View>
           <Text style={styles.headerSub}>Welcome back, {firstName}</Text>
         </View>
         <TouchableOpacity
@@ -161,6 +169,9 @@ function makeStyles(c: ThemeColors) {
       padding: 20,
       paddingTop: 60,
     },
+    headerLeft: { flex: 1 },
+    headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    headerLogo: { width: 22, height: 22 },
     headerTitle: { fontSize: 26, fontFamily: 'Poppins_700Bold', color: c.text },
     headerSub: { fontSize: 14, color: c.textSub, marginTop: 2 },
     notifBtn: {

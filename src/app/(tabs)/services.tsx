@@ -1,26 +1,27 @@
-import { useState, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-  Modal,
-  Alert,
-} from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FontAwesome5 } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase';
-import { createOrder } from '@/lib/api';
-import { useAppStore } from '@/lib/store';
+import { Icon } from '@/components/Icon';
 import { useBalance } from '@/hooks/useBalance';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useTheme } from '@/hooks/useTheme';
+import { createOrder } from '@/lib/api';
+import { useAppStore } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 import { ThemeColors } from '@/lib/theme';
+import { FontAwesome5 } from '@expo/vector-icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Icon } from '@/components/Icon';
 
 interface Service {
   id: string;
@@ -95,6 +96,7 @@ export default function ServicesScreen() {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [search, setSearch] = useState('');
   const [platformSearch, setPlatformSearch] = useState('');
+  const [activePlatformFilter, setActivePlatformFilter] = useState<string | null>(null);
   const [link, setLink] = useState('');
   const [quantity, setQuantity] = useState('');
   const [orderModalVisible, setOrderModalVisible] = useState(false);
@@ -111,16 +113,36 @@ export default function ServicesScreen() {
     },
   });
 
+  // Derive unique top-level platform keys that actually have services (for filter chips)
+  const platformFilters = useMemo(() => {
+    const seen = new Set<string>();
+    services.forEach((s) => {
+      if (!s.category) return;
+      const key = s.category.toLowerCase();
+      for (const name of Object.keys(PLATFORMS)) {
+        if (key.includes(name)) { seen.add(name); break; }
+      }
+    });
+    return Array.from(seen);
+  }, [services]);
+
   const platforms = useMemo(() => {
     const map = new Map<string, number>();
     services.forEach((s) => {
       if (s.category) map.set(s.category, (map.get(s.category) ?? 0) + 1);
     });
-    const all = Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+    let all = Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+
+    // Apply platform chip filter
+    if (activePlatformFilter) {
+      all = all.filter((p) => p.name.toLowerCase().includes(activePlatformFilter));
+    }
+
+    // Apply search
     if (!platformSearch.trim()) return all;
     const q = platformSearch.toLowerCase();
     return all.filter((p) => p.name.toLowerCase().includes(q));
-  }, [services, platformSearch]);
+  }, [services, platformSearch, activePlatformFilter]);
 
   const filteredServices = useMemo(() => {
     const list = selectedPlatform ? services.filter((s) => s.category === selectedPlatform) : [];
@@ -195,6 +217,41 @@ export default function ServicesScreen() {
           )}
         </View>
 
+        {/* Platform filter chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterBar}
+          keyboardShouldPersistTaps="handled"
+        >
+          <TouchableOpacity
+            style={[styles.filterChip, activePlatformFilter === null && { backgroundColor: '#6b7280', borderColor: '#6b7280' }]}
+            onPress={() => setActivePlatformFilter(null)}
+          >
+            {activePlatformFilter !== null && <View style={[styles.filterDot, { backgroundColor: '#6b7280' }]} />}
+            <Text style={[styles.filterChipText, activePlatformFilter === null && styles.filterChipTextActive]}>
+              All
+            </Text>
+          </TouchableOpacity>
+
+          {platformFilters.map((key) => {
+            const meta = PLATFORMS[key];
+            const isActive = activePlatformFilter === key;
+            return (
+              <TouchableOpacity
+                key={key}
+                style={[styles.filterChip, isActive && { backgroundColor: meta.color, borderColor: meta.color }]}
+                onPress={() => setActivePlatformFilter(isActive ? null : key)}
+              >
+                {!isActive && <View style={[styles.filterDot, { backgroundColor: meta.color }]} />}
+                <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
         <FlatList
           key="platforms-grid"
           data={platforms}
@@ -247,9 +304,7 @@ export default function ServicesScreen() {
           <Icon name="chevronLeft" size={22} color="#7C5CFC" />
         </TouchableOpacity>
         <View style={[styles.platformBadge, { backgroundColor: platformColor }]}>
-          <Text style={styles.platformBadgeLetter}>
-            {selectedPlatform.charAt(0).toUpperCase()}
-          </Text>
+          <PlatformIcon category={selectedPlatform} size={20} color="#fff" />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.servicesTitle}>{selectedPlatform}</Text>
@@ -402,6 +457,15 @@ function makeStyles(c: ThemeColors) {
     headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
     headerTitle: { fontSize: 24, fontFamily: 'Poppins_700Bold', color: c.text },
     headerSub: { fontSize: 13, color: c.textSub },
+    filterBar: { paddingHorizontal: 16, paddingBottom: 10, paddingTop: 2, gap: 6 },
+    filterChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20,
+      backgroundColor: c.card, borderWidth: 1, borderColor: c.border, height: 30,
+    },
+    filterDot: { width: 6, height: 6, borderRadius: 3 },
+    filterChipText: { fontSize: 12, color: c.text, fontFamily: 'Poppins_500Medium' },
+    filterChipTextActive: { color: '#fff', fontFamily: 'Poppins_600SemiBold' },
     platformGrid: { padding: 16, paddingBottom: 100 },
     platformRow: { gap: 12, marginBottom: 12 },
     platformCard: {
@@ -415,7 +479,6 @@ function makeStyles(c: ThemeColors) {
     servicesHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, gap: 12 },
     backBtn: { padding: 4 },
     platformBadge: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    platformBadgeLetter: { fontSize: 20, fontFamily: 'Poppins_800ExtraBold', color: '#fff' },
     servicesTitle: { fontSize: 18, fontFamily: 'Poppins_700Bold', color: c.text },
     servicesSubtitle: { fontSize: 12, color: c.textSub, marginTop: 1 },
     searchWrap: {

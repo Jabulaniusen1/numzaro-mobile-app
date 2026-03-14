@@ -49,6 +49,14 @@ export const updateNumber = (id: string, action: string) =>
     body: JSON.stringify({ action }),
   });
 
+export const fetchUserNumbers = () => apiFetch('/api/numbers');
+
+export const cancelNumber = (id: string) =>
+  apiFetch(`/api/numbers/${id}`, { method: 'DELETE' });
+
+export const fetchRentalPricing = (rentalId: string | number) =>
+  apiFetch(`/api/smspool/pricing?mode=rental&rentalId=${rentalId}`);
+
 // ── Social media order creation (calls SMM panel API server-side) ──
 export const createOrder = (body: object) =>
   apiFetch('/api/orders/create', { method: 'POST', body: JSON.stringify(body) });

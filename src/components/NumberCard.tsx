@@ -13,6 +13,7 @@ interface VirtualNumber {
   country_name: string;
   country_code: string;
   monthly_cost: number;
+  number_type?: string; // 'activation' | 'rental'
   status: string;
   expires_at: string | null;
   otp_code?: string | null;
@@ -70,12 +71,48 @@ export function NumberCard({
     );
   }
 
+  const isRental = number.number_type === 'rental';
+  const activationActions = ['finish', 'ban', 'cancel', 'sync'] as const;
+  const rentalActions = ['cancel', 'sync'] as const;
+  const actions = isRental ? rentalActions : activationActions;
+
+  const expiresDate = number.expires_at ? new Date(number.expires_at) : null;
+  const daysUntilExpiry = expiresDate
+    ? Math.ceil((expiresDate.getTime() - Date.now()) / 86400000)
+    : null;
+  const expiringSoon = daysUntilExpiry !== null && daysUntilExpiry <= 7 && daysUntilExpiry > 0;
+  const expired = daysUntilExpiry !== null && daysUntilExpiry <= 0;
+
   return (
     <View style={styles.prominentCard}>
+      {/* Renewal warning for rental */}
+      {isRental && expiringSoon && (
+        <View style={styles.renewalBanner}>
+          <Icon name="bell" size={13} color="#92400e" />
+          <Text style={styles.renewalBannerText}>
+            Expires in {daysUntilExpiry} day{daysUntilExpiry === 1 ? '' : 's'} — renew soon
+          </Text>
+        </View>
+      )}
+      {isRental && expired && (
+        <View style={[styles.renewalBanner, styles.renewalBannerExpired]}>
+          <Icon name="bell" size={13} color="#991b1b" />
+          <Text style={[styles.renewalBannerText, { color: '#991b1b' }]}>Subscription expired</Text>
+        </View>
+      )}
+
       <View style={styles.prominentHeader}>
         <View>
           <Text style={styles.shortId}>#{number.id.slice(-6).toUpperCase()}</Text>
-          <CountdownTimer expiresAt={number.expires_at} style={styles.countdown} />
+          {isRental ? (
+            <Text style={styles.expiryDate}>
+              {expiresDate
+                ? `Expires ${expiresDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                : 'No expiry set'}
+            </Text>
+          ) : (
+            <CountdownTimer expiresAt={number.expires_at} style={styles.countdown} />
+          )}
         </View>
         <View style={styles.statusDot}>
           <View style={[styles.dot, styles.dotPulse]} />
@@ -87,10 +124,18 @@ export function NumberCard({
         <View style={styles.infoLabelRow}>
           <Icon name="box" size={13} color={colors.textSub} />
           <Text style={styles.infoLabel}>{number.product}</Text>
+          {isRental && (
+            <View style={styles.rentalBadge}>
+              <Text style={styles.rentalBadgeText}>Monthly</Text>
+            </View>
+          )}
         </View>
         <View style={styles.infoLabelRow}>
           <Icon name="placeholder" size={13} color={colors.textSub} />
-          <Text style={styles.infoLabel}>{number.country_name} · ${number.monthly_cost}</Text>
+          <Text style={styles.infoLabel}>
+            {number.country_name}
+            {isRental && number.monthly_cost ? ` · $${number.monthly_cost}/mo` : ''}
+          </Text>
         </View>
       </View>
 
@@ -104,22 +149,24 @@ export function NumberCard({
         </View>
       </View>
 
-      <View style={styles.codeRow}>
-        <Text style={styles.codeLabel}>OTP Code</Text>
-        <View style={styles.codeValueRow}>
-          <Text style={[styles.codeValue, !number.otp_code && styles.codePlaceholder]}>
-            {number.otp_code ?? '—'}
-          </Text>
-          {number.otp_code && (
-            <TouchableOpacity onPress={copyOtp} style={styles.copyBtn}>
-              <Text style={styles.copyBtnText}>Copy</Text>
-            </TouchableOpacity>
-          )}
+      {!isRental && (
+        <View style={styles.codeRow}>
+          <Text style={styles.codeLabel}>OTP Code</Text>
+          <View style={styles.codeValueRow}>
+            <Text style={[styles.codeValue, !number.otp_code && styles.codePlaceholder]}>
+              {number.otp_code ?? '—'}
+            </Text>
+            {number.otp_code && (
+              <TouchableOpacity onPress={copyOtp} style={styles.copyBtn}>
+                <Text style={styles.copyBtnText}>Copy</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </View>
+      )}
 
       <View style={styles.actions}>
-        {(['finish', 'ban', 'cancel', 'sync'] as const).map((action) => (
+        {actions.map((action) => (
           <TouchableOpacity
             key={action}
             style={[
@@ -147,12 +194,14 @@ export function NumberCard({
           <Icon name="message" size={14} color="#7C5CFC" />
           <Text style={styles.viewLinkText}>Messages ({number.message_count ?? 0})</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onViewOtps} style={styles.viewLink}>
-          <Icon name="key" size={14} color="#7C5CFC" />
-          <Text style={styles.viewLinkText}>
-            OTPs{number.pending_otp_count ? ` (${number.pending_otp_count} pending)` : ''}
-          </Text>
-        </TouchableOpacity>
+        {!isRental && (
+          <TouchableOpacity onPress={onViewOtps} style={styles.viewLink}>
+            <Icon name="key" size={14} color="#7C5CFC" />
+            <Text style={styles.viewLinkText}>
+              OTPs{number.pending_otp_count ? ` (${number.pending_otp_count} pending)` : ''}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -198,5 +247,14 @@ function makeStyles(c: ThemeColors) {
     rowRight: { alignItems: 'flex-end', gap: 3 },
     rowPhone: { fontSize: 12, color: c.text, maxWidth: 140 },
     rowOtp: { fontSize: 14, fontFamily: 'Poppins_700Bold', color: '#7C5CFC' },
+    expiryDate: { fontSize: 15, fontFamily: 'Poppins_700Bold', color: c.text },
+    rentalBadge: { backgroundColor: '#d1fae5', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+    rentalBadgeText: { color: '#065f46', fontSize: 10, fontFamily: 'Poppins_600SemiBold' },
+    renewalBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: '#fef3c7', borderRadius: 8, padding: 8, marginBottom: 10,
+    },
+    renewalBannerExpired: { backgroundColor: '#fee2e2' },
+    renewalBannerText: { color: '#92400e', fontSize: 12, fontFamily: 'Poppins_500Medium', flex: 1 },
   });
 }

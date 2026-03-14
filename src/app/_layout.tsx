@@ -1,7 +1,7 @@
 import '../global.css';
 import 'react-native-url-polyfill/auto';
 import { useEffect, useState } from 'react';
-import { Redirect, Stack } from 'expo-router';
+import { Redirect, Stack, useSegments } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Session } from '@supabase/supabase-js';
 import { useFonts } from 'expo-font';
@@ -32,6 +32,7 @@ export default function RootLayout() {
   const [authLoading, setAuthLoading] = useState(true);
   const setUserId = useAppStore((s) => s.setUserId);
   const { colors } = useTheme();
+  const segments = useSegments();
 
   const [fontsLoaded] = useFonts({
     'LineIcons-Solid': require('@/assets/lineicons-5.1-free/free-solid-fonts/lineicons-free-solid.ttf'),
@@ -68,11 +69,15 @@ export default function RootLayout() {
     );
   }
 
+  const inAuth = segments[0] === 'auth';
+  const inSplash = segments[0] === 'splash';
+
   return (
     <QueryClientProvider client={queryClient}>
       <StatusBar style={colors.statusBar} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="splash" options={{ headerShown: false }} />
         <Stack.Screen name="auth/login" options={{ headerShown: false }} />
         <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
         <Stack.Screen name="my-numbers/index" options={{ headerShown: false }} />
@@ -82,7 +87,8 @@ export default function RootLayout() {
         <Stack.Screen name="transactions" options={{ headerShown: false }} />
         <Stack.Screen name="fund-wallet" options={{ headerShown: false }} />
       </Stack>
-      {!session && <Redirect href="/auth/login" />}
+      {!session && !inSplash && !inAuth && <Redirect href="/splash" />}
+      {session && (inSplash || inAuth) && <Redirect href="/(tabs)" />}
       <Toast />
     </QueryClientProvider>
   );
