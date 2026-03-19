@@ -13,6 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
+import { useCurrency } from '@/hooks/useCurrency';
 import { useTheme } from '@/hooks/useTheme';
 import { ThemeColors } from '@/lib/theme';
 import { BalanceCard } from '@/components/BalanceCard';
@@ -38,6 +39,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.userId);
+  const { format: formatCurrency } = useCurrency();
   const { colors } = useTheme();
   const styles = makeStyles(colors);
 
@@ -149,7 +151,7 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.orderRight}>
               <StatusBadge status={order.status} />
-              <Text style={styles.orderCharge}>₦{Number(order.charge).toFixed(4)}</Text>
+              <Text style={styles.orderCharge}>{formatCurrency(Number(order.charge))}</Text>
             </View>
           </View>
         ))

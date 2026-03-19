@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,16 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  fetchSmsPoolServices,
-  fetchSmsPoolCountries,
-  fetchPricing,
+  fetchFxRate,
+  fetchRentalCountries,
   fetchRentalPricing,
-  purchaseNumber,
+  fetchRentalServices,
+  fetchSmsPoolCountries,
+  fetchSmsPoolPricing,
+  fetchSmsPoolServices,
+  purchaseOneTimeNumber,
+  purchaseRental,
+  type ReservationType,
 } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { useBalance } from '@/hooks/useBalance';
@@ -28,14 +33,12 @@ import { Icon } from '@/components/Icon';
 import { ServiceLogo } from '@/components/ServiceLogo';
 import { useRouter } from 'expo-router';
 
-// ISO-2 code → flag emoji via Regional Indicator Symbols
 function isoToFlag(iso: string): string {
   return Array.from(iso.toUpperCase().slice(0, 2))
     .map((c) => String.fromCodePoint(c.charCodeAt(0) + 127397))
     .join('');
 }
 
-// Common country name → ISO-2 fallback map
 const COUNTRY_ISO: Record<string, string> = {
   'united states': 'US', 'usa': 'US', 'us': 'US',
   'united kingdom': 'GB', 'uk': 'GB', 'england': 'GB',
@@ -61,162 +64,519 @@ const COUNTRY_ISO: Record<string, string> = {
   'morocco': 'MA', 'algeria': 'DZ', 'tunisia': 'TN',
   'senegal': 'SN', 'cameroon': 'CM', 'tanzania': 'TZ',
   'uganda': 'UG', 'zimbabwe': 'ZW', 'zambia': 'ZM',
-  'ivory coast': 'CI', 'côte d\'ivoire': 'CI',
+  'ivory coast': 'CI', "cote d'ivoire": 'CI',
 };
 
 function countryFlag(code?: string, name?: string): string {
-  // Try the short_name/code field first if it looks like an ISO-2 code
   if (code && /^[a-zA-Z]{2}$/.test(code.trim())) {
     return isoToFlag(code.trim());
   }
-  // Fall back to country name lookup
   if (name) {
     const iso = COUNTRY_ISO[name.toLowerCase().trim()];
     if (iso) return isoToFlag(iso);
   }
-  // Last resort: try using the code anyway if it's at least 2 chars
   if (code && code.trim().length >= 2) {
     return isoToFlag(code.trim());
   }
   return '🌍';
 }
 
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const n = Number(value.replace(/,/g, '').trim());
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function pickNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const num = toNumber(value);
+    if (num !== null) return num;
+  }
+  return null;
+}
+
+function extractArray(payload: any, keys: string[]): any[] {
+  const containers = [payload, payload?.data, payload?.result, payload?.payload];
+
+  for (const container of containers) {
+    if (Array.isArray(container)) return container;
+    for (const key of keys) {
+      if (Array.isArray(container?.[key])) return container[key];
+    }
+  }
+
+  return [];
+}
+
 type Mode = 'activation' | 'rental';
-// activation: service → country → confirm
-// rental:     service (rental list) → confirm (pricing inline)
 type Step = 'service' | 'country' | 'confirm';
 
-interface SmsService { ID?: string; code?: string; name: string; logo?: string }
-interface Country    { code: string; name: string; flag?: string }
-interface PricingOption { label: string; totalDays: number; price: number; rawPrice?: number }
+type DurationKey =
+  | 'oneDay'
+  | 'threeDay'
+  | 'sevenDay'
+  | 'fourteenDay'
+  | 'thirtyDay'
+  | 'ninetyDay'
+  | 'oneYear';
+
+interface ServiceItem {
+  id: string;
+  code: string;
+  name: string;
+  logo?: string;
+}
+
+interface CountryItem {
+  id: string;
+  code: string;
+  name: string;
+  shortCode?: string;
+  areaCode?: string;
+  flag?: string;
+}
+
+interface RentalPricingOption {
+  duration: DurationKey;
+  label: string;
+  areaCode?: string;
+  priceNGN: number;
+}
+
+const DURATION_LABELS: Record<DurationKey, string> = {
+  oneDay: '1 Day',
+  threeDay: '3 Days',
+  sevenDay: '7 Days',
+  fourteenDay: '14 Days',
+  thirtyDay: '30 Days',
+  ninetyDay: '90 Days',
+  oneYear: '1 Year',
+};
+
+const DURATION_ORDER: Record<DurationKey, number> = {
+  oneDay: 1,
+  threeDay: 2,
+  sevenDay: 3,
+  fourteenDay: 4,
+  thirtyDay: 5,
+  ninetyDay: 6,
+  oneYear: 7,
+};
+
+function normalizeDuration(value: unknown): DurationKey | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  const aliases: Record<string, DurationKey> = {
+    oneday: 'oneDay',
+    day1: 'oneDay',
+    d1: 'oneDay',
+    one: 'oneDay',
+    threeday: 'threeDay',
+    day3: 'threeDay',
+    d3: 'threeDay',
+    sevenday: 'sevenDay',
+    day7: 'sevenDay',
+    d7: 'sevenDay',
+    fourteenday: 'fourteenDay',
+    day14: 'fourteenDay',
+    d14: 'fourteenDay',
+    thirtyday: 'thirtyDay',
+    day30: 'thirtyDay',
+    d30: 'thirtyDay',
+    ninetyday: 'ninetyDay',
+    day90: 'ninetyDay',
+    d90: 'ninetyDay',
+    oneyear: 'oneYear',
+    year1: 'oneYear',
+    y1: 'oneYear',
+  };
+
+  return aliases[normalized] ?? null;
+}
+
+function normalizeService(raw: any): ServiceItem {
+  const code = String(
+    raw?.code ?? raw?.ID ?? raw?.id ?? raw?.service_id ?? raw?.serviceCode ?? raw?.service_code ?? ''
+  );
+  const name = String(raw?.name ?? raw?.serviceName ?? raw?.service ?? raw?.product ?? code);
+  const id = String(raw?.id ?? raw?.ID ?? raw?.code ?? raw?.service_id ?? name);
+
+  return {
+    id,
+    code: code || id,
+    name,
+    logo: typeof raw?.logo === 'string' ? raw.logo : undefined,
+  };
+}
+
+function normalizeCountry(raw: any): CountryItem {
+  const code = String(raw?.code ?? raw?.countryCode ?? raw?.country_code ?? raw?.id ?? raw?.countryId ?? '');
+  const shortCode = raw?.shortCode ?? raw?.short_code ?? raw?.iso2 ?? raw?.alpha2;
+  const areaCode = raw?.areaCode ?? raw?.area_code ?? raw?.dialCode ?? raw?.dial_code ?? undefined;
+  const name = String(raw?.name ?? raw?.countryName ?? raw?.country_name ?? raw?.country ?? code);
+  const id = `${code || shortCode || name}-${name}`;
+
+  return {
+    id,
+    code: code || String(shortCode ?? areaCode ?? name),
+    name,
+    shortCode: shortCode ? String(shortCode) : undefined,
+    areaCode: areaCode ? String(areaCode) : undefined,
+    flag: typeof raw?.flag === 'string' ? raw.flag : undefined,
+  };
+}
+
+function normalizeRentalOptions(payload: any, fxRate: number | null, defaultAreaCode?: string): RentalPricingOption[] {
+  let source = extractArray(payload, ['options', 'pricing', 'durations', 'items', 'plans']);
+
+  if (!source.length && payload?.options && typeof payload.options === 'object') {
+    source = Object.entries(payload.options).map(([duration, value]) => ({
+      duration,
+      ...(typeof value === 'object' && value !== null ? value : { price: value }),
+    }));
+  }
+
+  const mapped: RentalPricingOption[] = [];
+
+  source.forEach((raw: any) => {
+    const duration = normalizeDuration(raw?.duration ?? raw?.key ?? raw?.code ?? raw?.slug ?? raw?.label ?? raw?.name);
+    if (!duration) return;
+
+    const priceNGN = pickNumber(raw?.priceNGN, raw?.price_ngn, raw?.ngnPrice, raw?.ngn);
+    const usdPrice = pickNumber(raw?.price, raw?.priceUSD, raw?.usdPrice, raw?.rawPrice, raw?.amount);
+    const resolvedNGN = priceNGN ?? (usdPrice !== null && fxRate !== null ? usdPrice * fxRate : null);
+    if (resolvedNGN === null) return;
+
+    const areaCode = raw?.areaCode ?? raw?.area_code ?? defaultAreaCode;
+    mapped.push({
+      duration,
+      label: String(raw?.label ?? DURATION_LABELS[duration]),
+      areaCode: areaCode ? String(areaCode) : undefined,
+      priceNGN: resolvedNGN,
+    });
+  });
+
+  return mapped.sort((a, b) => DURATION_ORDER[a.duration] - DURATION_ORDER[b.duration]);
+}
+
+function getSuccessRateBadge(rate: number | null): { label: string; bg: string; text: string } {
+  if (rate === null) {
+    return {
+      label: 'Not available',
+      bg: '#e5e7eb',
+      text: '#374151',
+    };
+  }
+
+  if (rate >= 85) {
+    return {
+      label: `${rate.toFixed(1)}%`,
+      bg: '#dcfce7',
+      text: '#166534',
+    };
+  }
+
+  if (rate >= 70) {
+    return {
+      label: `${rate.toFixed(1)}%`,
+      bg: '#fef3c7',
+      text: '#92400e',
+    };
+  }
+
+  return {
+    label: `${rate.toFixed(1)}%`,
+    bg: '#fee2e2',
+    text: '#991b1b',
+  };
+}
 
 export default function NumbersScreen() {
-  const router       = useRouter();
-  const queryClient  = useQueryClient();
-  const userId       = useAppStore((s) => s.userId);
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const userId = useAppStore((s) => s.userId);
   const { data: balance } = useBalance(userId ?? '');
-  const { format }   = useCurrency();
-  const { colors }   = useTheme();
-  const styles       = makeStyles(colors);
+  const { format } = useCurrency();
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
 
-  const [mode, setMode]                       = useState<Mode>('activation');
-  const [step, setStep]                       = useState<Step>('service');
-  const [page, setPage]                       = useState(1);
-  const [search, setSearch]                   = useState('');
-  const [selectedService, setSelectedService] = useState<SmsService | null>(null);
-  const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
-  // rental-specific
-  const [selectedRental, setSelectedRental]   = useState<SmsService | null>(null);
-  const [selectedPricing, setSelectedPricing] = useState<PricingOption | null>(null);
+  const [mode, setMode] = useState<Mode>('activation');
+  const [step, setStep] = useState<Step>('service');
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [reservationType, setReservationType] = useState<ReservationType>('renewable');
 
-  // Services — both modes (activation: app grid, rental: rental options list)
-  const { data: servicesData, isLoading: loadingServices } = useQuery({
-    queryKey: ['smspool-services', mode, page],
-    queryFn:  () => fetchSmsPoolServices(mode, page),
-    enabled:  step === 'service',
+  const [selectedActivationService, setSelectedActivationService] = useState<ServiceItem | null>(null);
+  const [selectedActivationCountry, setSelectedActivationCountry] = useState<CountryItem | null>(null);
+
+  const [selectedRentalService, setSelectedRentalService] = useState<ServiceItem | null>(null);
+  const [selectedRentalCountry, setSelectedRentalCountry] = useState<CountryItem | null>(null);
+  const [selectedRentalOption, setSelectedRentalOption] = useState<RentalPricingOption | null>(null);
+
+  const isRenewable = reservationType === 'renewable';
+
+  const fxRateQuery = useQuery({
+    queryKey: ['fx-rate', 'USD', 'NGN'],
+    queryFn: () => fetchFxRate('USD', 'NGN'),
+    staleTime: 60_000,
+    refetchInterval: 120_000,
   });
 
-  // Countries — activation only
-  const { data: countriesData, isLoading: loadingCountries } = useQuery({
+  const fxRatePayload = fxRateQuery.data as any;
+  const fxRate = pickNumber(
+    fxRatePayload?.rate,
+    fxRatePayload?.data?.rate,
+    fxRatePayload?.result?.rate
+  );
+
+  const activationServicesQuery = useQuery({
+    queryKey: ['smspool-services', page],
+    queryFn: () => fetchSmsPoolServices(page, 24),
+    enabled: mode === 'activation' && step === 'service',
+  });
+
+  const rentalServicesQuery = useQuery({
+    queryKey: ['grizzly-services', reservationType, page],
+    queryFn: () => fetchRentalServices(page, 24, reservationType),
+    enabled: mode === 'rental' && step === 'service',
+  });
+
+  const activationCountriesQuery = useQuery({
     queryKey: ['smspool-countries'],
-    queryFn:  fetchSmsPoolCountries,
-    enabled:  step === 'country' && mode === 'activation',
+    queryFn: fetchSmsPoolCountries,
+    enabled: mode === 'activation' && step === 'country',
   });
 
-  // Activation pricing
-  const activationPricingParams = useMemo(() => {
-    if (mode === 'activation' && selectedService && selectedCountry && step === 'confirm') {
-      const code = selectedService.code ?? selectedService.ID ?? '';
-      return `service=${code}&country=${selectedCountry.code}&mode=activation`;
-    }
-    return null;
-  }, [mode, selectedService, selectedCountry, step]);
-
-  const { data: activationPricing, isLoading: loadingActivationPricing } = useQuery({
-    queryKey: ['pricing-activation', activationPricingParams],
-    queryFn:  () => fetchPricing(activationPricingParams!),
-    enabled:  !!activationPricingParams,
+  const rentalCountriesQuery = useQuery({
+    queryKey: ['grizzly-countries'],
+    queryFn: fetchRentalCountries,
+    enabled: mode === 'rental' && step === 'country',
   });
 
-  // Rental pricing options from API
-  const rentalCode = selectedRental?.code ?? selectedRental?.ID;
-  const { data: rentalPricingData, isLoading: loadingRentalPricing } = useQuery({
-    queryKey: ['pricing-rental', rentalCode],
-    queryFn:  () => fetchRentalPricing(rentalCode!),
-    enabled:  mode === 'rental' && step === 'confirm' && !!rentalCode,
+  const activationPricingQuery = useQuery({
+    queryKey: ['activation-pricing', selectedActivationService?.code, selectedActivationCountry?.code],
+    queryFn: () => fetchSmsPoolPricing(selectedActivationService!.code, selectedActivationCountry!.code),
+    enabled: mode === 'activation' && step === 'confirm' && !!selectedActivationService && !!selectedActivationCountry,
   });
 
-  const services: SmsService[]     = servicesData?.services ?? servicesData ?? [];
-  const countries: Country[]        = countriesData?.countries ?? countriesData ?? [];
-  const rentalOptions: PricingOption[] = rentalPricingData?.options ?? [];
+  const rentalPricingQuery = useQuery({
+    queryKey: ['rental-pricing', selectedRentalService?.name, selectedRentalCountry?.code, isRenewable],
+    queryFn: () => fetchRentalPricing(selectedRentalService!.name, selectedRentalCountry!.code, isRenewable),
+    enabled: mode === 'rental' && step === 'confirm' && !!selectedRentalService && !!selectedRentalCountry,
+  });
+
+  const activationServices = useMemo(
+    () => extractArray(activationServicesQuery.data, ['services', 'items']).map(normalizeService),
+    [activationServicesQuery.data]
+  );
+
+  const rentalServices = useMemo(
+    () => extractArray(rentalServicesQuery.data, ['services', 'items']).map(normalizeService),
+    [rentalServicesQuery.data]
+  );
+
+  const activationCountries = useMemo(
+    () => extractArray(activationCountriesQuery.data, ['countries', 'items']).map(normalizeCountry),
+    [activationCountriesQuery.data]
+  );
+
+  const rentalCountries = useMemo(
+    () => extractArray(rentalCountriesQuery.data, ['countries', 'items']).map(normalizeCountry),
+    [rentalCountriesQuery.data]
+  );
+
+  const activationPricing = activationPricingQuery.data;
+  const activationPriceNGN = pickNumber(
+    activationPricing?.priceNGN,
+    activationPricing?.price_ngn,
+    activationPricing?.data?.priceNGN,
+    activationPricing?.data?.price_ngn
+  );
+  const activationPriceUSD = pickNumber(
+    activationPricing?.price,
+    activationPricing?.usdPrice,
+    activationPricing?.data?.price,
+    activationPricing?.rawPrice,
+    activationPricing?.data?.rawPrice
+  );
+
+  const activationDisplayPrice =
+    activationPriceNGN ??
+    (activationPriceUSD !== null && fxRate !== null ? activationPriceUSD * fxRate : null);
+
+  const activationSuccessRate = pickNumber(
+    activationPricing?.successRate,
+    activationPricing?.success_rate,
+    activationPricing?.data?.successRate,
+    activationPricing?.data?.success_rate
+  );
+  const activationSuccessRateBadge = getSuccessRateBadge(activationSuccessRate);
+
+  const rentalOptions = useMemo(
+    () => normalizeRentalOptions(rentalPricingQuery.data, fxRate, selectedRentalCountry?.areaCode ?? selectedRentalCountry?.code),
+    [rentalPricingQuery.data, fxRate, selectedRentalCountry?.areaCode, selectedRentalCountry?.code]
+  );
+
+  const services = mode === 'activation' ? activationServices : rentalServices;
+  const countries = mode === 'activation' ? activationCountries : rentalCountries;
+
+  const loadingServices = mode === 'activation'
+    ? activationServicesQuery.isLoading
+    : rentalServicesQuery.isLoading;
+  const servicesError = mode === 'activation'
+    ? activationServicesQuery.error
+    : rentalServicesQuery.error;
+
+  const loadingCountries = mode === 'activation'
+    ? activationCountriesQuery.isLoading
+    : rentalCountriesQuery.isLoading;
+  const countriesError = mode === 'activation'
+    ? activationCountriesQuery.error
+    : rentalCountriesQuery.error;
 
   const filteredServices = useMemo(() => {
     if (!search.trim()) return services;
     const q = search.toLowerCase();
-    return services.filter((s: SmsService) => s.name.toLowerCase().includes(q));
+    return services.filter((s) => s.name.toLowerCase().includes(q));
   }, [services, search]);
 
   const filteredCountries = useMemo(() => {
     if (!search.trim()) return countries;
     const q = search.toLowerCase();
-    return countries.filter((c: Country) => c.name.toLowerCase().includes(q));
+    return countries.filter((c) => c.name.toLowerCase().includes(q));
   }, [countries, search]);
 
-  const mutation = useMutation({
-    mutationFn: purchaseNumber,
+  const resetFlow = () => {
+    setStep('service');
+    setPage(1);
+    setSearch('');
+    setSelectedActivationService(null);
+    setSelectedActivationCountry(null);
+    setSelectedRentalService(null);
+    setSelectedRentalCountry(null);
+    setSelectedRentalOption(null);
+  };
+
+  const purchaseMutation = useMutation({
+    mutationFn: async () => {
+      if (mode === 'activation') {
+        if (!selectedActivationService || !selectedActivationCountry) {
+          throw new Error('Select service and country first.');
+        }
+
+        return purchaseOneTimeNumber({
+          serviceCode: selectedActivationService.code,
+          serviceName: selectedActivationService.name,
+          country: selectedActivationCountry.code,
+          countryName: selectedActivationCountry.name,
+          countryShortCode: selectedActivationCountry.shortCode ?? selectedActivationCountry.code,
+        });
+      }
+
+      if (!selectedRentalService || !selectedRentalCountry || !selectedRentalOption) {
+        throw new Error('Select service, country, and duration first.');
+      }
+
+      const areaCode =
+        selectedRentalOption.areaCode ||
+        selectedRentalCountry.areaCode ||
+        selectedRentalCountry.code;
+
+      return purchaseRental({
+        serviceName: selectedRentalService.name,
+        areaCode,
+        isRenewable,
+        duration: selectedRentalOption.duration,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['balance', userId] });
       queryClient.invalidateQueries({ queryKey: ['numbers', userId] });
       resetFlow();
-      Alert.alert('Success', 'Number purchased! Go to My Numbers to view it.');
+      Alert.alert('Success', mode === 'activation' ? 'One-time number purchased.' : 'Rental purchased successfully.');
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
-  const resetFlow = () => {
-    setStep('service'); setPage(1); setSearch('');
-    setSelectedService(null); setSelectedCountry(null);
-    setSelectedRental(null); setSelectedPricing(null);
+  const handlePurchase = () => {
+    if (mode === 'activation' && (!selectedActivationService || !selectedActivationCountry)) {
+      return Alert.alert('Missing selection', 'Please select service and country.');
+    }
+
+    if (mode === 'rental' && (!selectedRentalService || !selectedRentalCountry || !selectedRentalOption)) {
+      return Alert.alert('Missing selection', 'Please select service, country and duration.');
+    }
+
+    purchaseMutation.mutate();
   };
 
-  const handlePurchase = () => {
+  const stepTitle = () => {
     if (mode === 'activation') {
-      mutation.mutate({
-        mode,
-        serviceCode: selectedService?.code ?? selectedService?.ID,
-        serviceName: selectedService?.name,
-        country:     selectedCountry?.code,
-        countryName: selectedCountry?.name,
-      });
-    } else {
-      if (!selectedPricing) return Alert.alert('Select a duration first');
-      mutation.mutate({
-        mode:       'rental',
-        rentalId:   selectedRental?.code ?? selectedRental?.ID,
-        rentalName: selectedRental?.name,
-        days:       selectedPricing.totalDays,
-      });
+      if (step === 'service') return '1. Choose Service';
+      if (step === 'country') return '2. Choose Country';
+      return '3. Confirm Order';
+    }
+
+    if (step === 'service') return '1. Choose Rental Service';
+    if (step === 'country') return '2. Choose Country/Area';
+    return '3. Select Duration & Confirm';
+  };
+
+  const handleBack = () => {
+    if (step === 'confirm') {
+      setStep('country');
+      if (mode === 'rental') setSelectedRentalOption(null);
+      return;
+    }
+
+    if (step === 'country') {
+      setStep('service');
+      if (mode === 'activation') {
+        setSelectedActivationCountry(null);
+      } else {
+        setSelectedRentalCountry(null);
+      }
     }
   };
 
-  const activationPrice = activationPricing?.priceNGN ?? activationPricing?.price ?? 0;
-
-  // ── Render: step = service ────────────────────────────────────────────────
   const renderServiceStep = () => (
     <>
       <TextInput
         style={styles.search}
         value={search}
         onChangeText={setSearch}
-        placeholder={mode === 'activation' ? 'Search services…' : 'Search rentals…'}
+        placeholder={mode === 'activation' ? 'Search services...' : 'Search rental services...'}
         placeholderTextColor="#9ca3af"
       />
+
       {loadingServices ? (
         <ActivityIndicator color="#7C5CFC" style={{ marginTop: 40 }} />
+      ) : servicesError ? (
+        <View style={styles.emptyStateBox}>
+          <Icon name="xmark" size={20} color="#ef4444" />
+          <Text style={styles.emptyStateTitle}>Unable to load services</Text>
+          <Text style={styles.emptyStateText}>
+            {(servicesError as Error)?.message ?? 'Please try again.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyStateBtn}
+            onPress={() => {
+              if (mode === 'activation') activationServicesQuery.refetch();
+              else rentalServicesQuery.refetch();
+            }}
+          >
+            <Text style={styles.emptyStateBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
+          key={`services-${mode}`}
           data={filteredServices}
-          keyExtractor={(item) => `svc-${item.ID ?? item.code ?? item.name}`}
+          keyExtractor={(item) => `svc-${item.id}`}
           numColumns={mode === 'activation' ? 2 : 1}
           columnWrapperStyle={mode === 'activation' ? { gap: 10 } : undefined}
           contentContainerStyle={styles.grid}
@@ -224,53 +584,72 @@ export default function NumbersScreen() {
             mode === 'activation' ? (
               <TouchableOpacity
                 style={styles.gridCard}
-                onPress={() => { setSelectedService(item); setSearch(''); setStep('country'); }}
+                onPress={() => {
+                  setSelectedActivationService(item);
+                  setSearch('');
+                  setStep('country');
+                }}
               >
                 <ServiceLogo logo={item.logo} name={item.name} size="md" />
                 <Text style={styles.gridLabel} numberOfLines={2}>{item.name}</Text>
               </TouchableOpacity>
             ) : (
-              // Rental option row
               <TouchableOpacity
                 style={styles.rentalRow}
-                onPress={() => { setSelectedRental(item); setSearch(''); setStep('confirm'); }}
+                onPress={() => {
+                  setSelectedRentalService(item);
+                  setSearch('');
+                  setStep('country');
+                }}
               >
                 <View style={styles.rentalIconWrap}>
                   <Icon name="phone" size={18} color="#7C5CFC" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rentalName}>{item.name}</Text>
-                  <Text style={styles.rentalSub}>Tap to see pricing & durations</Text>
+                  <Text style={styles.rentalSub}>Select country and duration</Text>
                 </View>
                 <Icon name="arrowRight" size={14} color={colors.textMuted} />
               </TouchableOpacity>
             )
           }
           ListFooterComponent={
-            mode === 'activation' ? (
-              <View style={styles.pagination}>
-                <TouchableOpacity
-                  onPress={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  style={[styles.pageBtn, page === 1 && styles.pageBtnDisabled]}
-                >
-                  <Icon name="arrowLeft" size={13} color={page === 1 ? colors.textMuted : '#fff'} />
-                  <Text style={[styles.pageBtnText, page === 1 && { color: colors.textMuted }]}>Prev</Text>
-                </TouchableOpacity>
-                <Text style={styles.pageText}>Page {page}</Text>
-                <TouchableOpacity onPress={() => setPage((p) => p + 1)} style={styles.pageBtn}>
-                  <Text style={styles.pageBtnText}>Next</Text>
-                  <Icon name="arrowRight" size={13} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            ) : null
+            <View style={styles.pagination}>
+              <TouchableOpacity
+                onPress={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                style={[styles.pageBtn, page === 1 && styles.pageBtnDisabled]}
+              >
+                <Icon name="arrowLeft" size={13} color={page === 1 ? colors.textMuted : '#fff'} />
+                <Text style={[styles.pageBtnText, page === 1 && { color: colors.textMuted }]}>Prev</Text>
+              </TouchableOpacity>
+              <Text style={styles.pageText}>Page {page}</Text>
+              <TouchableOpacity onPress={() => setPage((p) => p + 1)} style={styles.pageBtn}>
+                <Text style={styles.pageBtnText}>Next</Text>
+                <Icon name="arrowRight" size={13} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyStateBox}>
+              <Icon name="search" size={20} color="#9ca3af" />
+              <Text style={styles.emptyStateTitle}>
+                {mode === 'activation' ? 'No services found' : 'No rental services found'}
+              </Text>
+              <Text style={styles.emptyStateText}>
+                {mode === 'activation'
+                  ? 'Try another page or search term.'
+                  : 'Switch reservation type or try another page.'}
+              </Text>
+            </View>
           }
         />
       )}
     </>
   );
 
-  // ── Render: step = country (activation only) ──────────────────────────────
+  const selectedService = mode === 'activation' ? selectedActivationService : selectedRentalService;
+
   const renderCountryStep = () => (
     <>
       {selectedService && (
@@ -279,123 +658,192 @@ export default function NumbersScreen() {
             <ServiceLogo logo={selectedService.logo} name={selectedService.name} size="sm" />
             <Text style={styles.selectedBannerText}>{selectedService.name}</Text>
           </View>
-          <TouchableOpacity onPress={() => { setStep('service'); setSelectedService(null); }}>
+          <TouchableOpacity
+            onPress={() => {
+              setStep('service');
+              if (mode === 'activation') setSelectedActivationService(null);
+              else setSelectedRentalService(null);
+            }}
+          >
             <Text style={styles.changeLink}>Change</Text>
           </TouchableOpacity>
         </View>
       )}
+
       <TextInput
         style={styles.search}
         value={search}
         onChangeText={setSearch}
-        placeholder="Search countries…"
+        placeholder={mode === 'activation' ? 'Search countries...' : 'Search countries/areas...'}
         placeholderTextColor="#9ca3af"
       />
+
       {loadingCountries ? (
         <ActivityIndicator color="#7C5CFC" style={{ marginTop: 40 }} />
+      ) : countriesError ? (
+        <View style={styles.emptyStateBox}>
+          <Icon name="xmark" size={20} color="#ef4444" />
+          <Text style={styles.emptyStateTitle}>Unable to load countries</Text>
+          <Text style={styles.emptyStateText}>
+            {(countriesError as Error)?.message ?? 'Please try again.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyStateBtn}
+            onPress={() => {
+              if (mode === 'activation') activationCountriesQuery.refetch();
+              else rentalCountriesQuery.refetch();
+            }}
+          >
+            <Text style={styles.emptyStateBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           data={filteredCountries}
-          keyExtractor={(item) => `cty-${item.name}`}
+          keyExtractor={(item) => `cty-${item.id}`}
           numColumns={2}
           columnWrapperStyle={{ gap: 10 }}
           contentContainerStyle={styles.grid}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.gridCard}
-              onPress={() => { setSelectedCountry(item); setSearch(''); setStep('confirm'); }}
+              onPress={() => {
+                if (mode === 'activation') {
+                  setSelectedActivationCountry(item);
+                } else {
+                  setSelectedRentalCountry(item);
+                }
+                setSearch('');
+                setStep('confirm');
+              }}
             >
-              <Text style={styles.flagEmoji}>{item.flag ?? countryFlag(item.code, item.name)}</Text>
+              <Text style={styles.flagEmoji}>{item.flag ?? countryFlag(item.shortCode ?? item.code, item.name)}</Text>
               <Text style={styles.gridLabel} numberOfLines={2}>{item.name}</Text>
+              {mode === 'rental' && (item.areaCode || item.shortCode) ? (
+                <Text style={styles.gridSubLabel}>
+                  {item.areaCode ? `Area ${item.areaCode}` : item.shortCode}
+                </Text>
+              ) : null}
             </TouchableOpacity>
           )}
+          ListEmptyComponent={
+            <View style={styles.emptyStateBox}>
+              <Icon name="search" size={20} color="#9ca3af" />
+              <Text style={styles.emptyStateTitle}>No countries found</Text>
+              <Text style={styles.emptyStateText}>Try a different search term.</Text>
+            </View>
+          }
         />
       )}
     </>
   );
 
-  // ── Render: step = confirm ────────────────────────────────────────────────
   const renderConfirmStep = () => (
     <ScrollView contentContainerStyle={styles.confirmContent}>
       <View style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Order Summary</Text>
 
-        {/* Activation */}
         {mode === 'activation' && (
           <>
-            {selectedService && (
+            {selectedActivationService && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Service</Text>
-                <Text style={styles.summaryVal}>{selectedService.name}</Text>
+                <Text style={styles.summaryVal}>{selectedActivationService.name}</Text>
               </View>
             )}
-            {selectedCountry && (
+            {selectedActivationCountry && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Country</Text>
                 <View style={styles.summaryCountryVal}>
-                  <Text style={{ fontSize: 16 }}>{selectedCountry.flag ?? countryFlag(selectedCountry.code, selectedCountry.name)}</Text>
-                  <Text style={styles.summaryVal}>{selectedCountry.name}</Text>
+                  <Text style={{ fontSize: 16 }}>
+                    {selectedActivationCountry.flag ?? countryFlag(selectedActivationCountry.shortCode ?? selectedActivationCountry.code, selectedActivationCountry.name)}
+                  </Text>
+                  <Text style={styles.summaryVal}>{selectedActivationCountry.name}</Text>
                 </View>
               </View>
             )}
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Type</Text>
               <View style={styles.typeBadge}>
-                <Text style={styles.typeBadgeText}>One-Time · 20 min</Text>
+                <Text style={styles.typeBadgeText}>One-Time Activation</Text>
               </View>
             </View>
-            {loadingActivationPricing ? (
+            {activationPricingQuery.isLoading ? (
               <ActivityIndicator color="#7C5CFC" style={{ marginVertical: 8 }} />
             ) : (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Price</Text>
-                <Text style={[styles.summaryVal, styles.priceHighlight]}>{format(activationPrice)}</Text>
-              </View>
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Success Rate</Text>
+                  <View style={[styles.successRateBadge, { backgroundColor: activationSuccessRateBadge.bg }]}>
+                    <Text style={[styles.successRateText, { color: activationSuccessRateBadge.text }]}>
+                      {activationSuccessRateBadge.label}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Price</Text>
+                  <Text style={[styles.summaryVal, styles.priceHighlight]}>
+                    {activationDisplayPrice !== null ? format(activationDisplayPrice) : 'Unavailable'}
+                  </Text>
+                </View>
+              </>
             )}
           </>
         )}
 
-        {/* Rental */}
         {mode === 'rental' && (
           <>
-            {selectedRental && (
+            {selectedRentalService && (
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Rental</Text>
-                <Text style={styles.summaryVal}>{selectedRental.name}</Text>
+                <Text style={styles.summaryLabel}>Service</Text>
+                <Text style={styles.summaryVal}>{selectedRentalService.name}</Text>
+              </View>
+            )}
+            {selectedRentalCountry && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Country/Area</Text>
+                <View style={styles.summaryCountryVal}>
+                  <Text style={{ fontSize: 16 }}>
+                    {selectedRentalCountry.flag ?? countryFlag(selectedRentalCountry.shortCode ?? selectedRentalCountry.code, selectedRentalCountry.name)}
+                  </Text>
+                  <Text style={styles.summaryVal}>{selectedRentalCountry.name}</Text>
+                </View>
               </View>
             )}
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Type</Text>
               <View style={[styles.typeBadge, { backgroundColor: '#d1fae5' }]}>
-                <Text style={[styles.typeBadgeText, { color: '#065f46' }]}>Monthly Rental</Text>
+                <Text style={[styles.typeBadgeText, { color: '#065f46' }]}>
+                  {isRenewable ? 'Renewable Rental' : 'Non-Renewable Rental'}
+                </Text>
               </View>
             </View>
             <Text style={[styles.summaryLabel, { marginTop: 4, marginBottom: 10 }]}>Select Duration</Text>
-            {loadingRentalPricing ? (
+            {rentalPricingQuery.isLoading ? (
               <ActivityIndicator color="#7C5CFC" style={{ marginVertical: 12 }} />
             ) : rentalOptions.length === 0 ? (
-              <Text style={styles.noOptions}>No pricing available for this rental.</Text>
+              <Text style={styles.noOptions}>No rental pricing available for this selection.</Text>
             ) : (
               <View style={styles.pricingGrid}>
                 {rentalOptions.map((opt) => {
-                  const active = selectedPricing?.totalDays === opt.totalDays;
+                  const active = selectedRentalOption?.duration === opt.duration;
                   return (
                     <TouchableOpacity
-                      key={opt.label}
+                      key={opt.duration}
                       style={[styles.pricingCard, active && styles.pricingCardActive]}
-                      onPress={() => setSelectedPricing(opt)}
+                      onPress={() => setSelectedRentalOption(opt)}
                     >
                       <Text style={[styles.pricingDuration, active && styles.pricingTextActive]}>{opt.label}</Text>
-                      <Text style={[styles.pricingPrice, active && styles.pricingTextActive]}>${opt.price.toFixed(2)}</Text>
+                      <Text style={[styles.pricingPrice, active && styles.pricingTextActive]}>{format(opt.priceNGN)}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
             )}
-            {selectedPricing && (
+            {selectedRentalOption && (
               <View style={[styles.summaryRow, { marginTop: 8 }]}>
                 <Text style={styles.summaryLabel}>You pay</Text>
-                <Text style={[styles.summaryVal, styles.priceHighlight]}>${selectedPricing.price.toFixed(2)}</Text>
+                <Text style={[styles.summaryVal, styles.priceHighlight]}>{format(selectedRentalOption.priceNGN)}</Text>
               </View>
             )}
           </>
@@ -407,45 +855,54 @@ export default function NumbersScreen() {
         </View>
       </View>
 
+      {mode === 'activation' && (
+        <>
+          <View style={styles.ctaMetaRow}>
+            <Text style={styles.ctaMetaLabel}>Success Rate</Text>
+            <View style={[styles.successRateBadge, { backgroundColor: activationSuccessRateBadge.bg }]}>
+              <Text style={[styles.successRateText, { color: activationSuccessRateBadge.text }]}>
+                {activationSuccessRateBadge.label}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.findAnotherBtn}
+            onPress={() => {
+              setSelectedActivationCountry(null);
+              setStep('country');
+            }}
+            disabled={purchaseMutation.isPending}
+          >
+            <Icon name="refresh" size={14} color="#0ea5e9" />
+            <Text style={styles.findAnotherBtnText}>Find another number</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
       <TouchableOpacity
-        style={[styles.buyBtn, (mutation.isPending || (mode === 'rental' && !selectedPricing)) && styles.buyBtnDisabled]}
+        style={[
+          styles.buyBtn,
+          (purchaseMutation.isPending || (mode === 'rental' && !selectedRentalOption)) && styles.buyBtnDisabled,
+        ]}
         onPress={handlePurchase}
-        disabled={mutation.isPending || (mode === 'rental' && !selectedPricing)}
+        disabled={purchaseMutation.isPending || (mode === 'rental' && !selectedRentalOption)}
       >
-        {mutation.isPending ? (
+        {purchaseMutation.isPending ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.buyBtnText}>
-            {mode === 'activation' ? 'Buy Number' : `Rent — ${selectedPricing?.label ?? 'Select duration'}`}
+          <Text style={styles.buyBtnText} numberOfLines={1} ellipsizeMode="tail">
+            {mode === 'activation'
+              ? `Buy ${selectedActivationService?.name ?? 'Number'}`
+              : `Rent ${selectedRentalService?.name ?? ''} - ${selectedRentalOption?.label ?? 'Select duration'}`}
           </Text>
         )}
       </TouchableOpacity>
     </ScrollView>
   );
 
-  const stepTitle = () => {
-    if (mode === 'activation') {
-      if (step === 'service') return '1. Choose Service';
-      if (step === 'country') return '2. Choose Country';
-      return '3. Confirm Order';
-    }
-    return step === 'service' ? '1. Choose Rental' : '2. Select Duration & Confirm';
-  };
-
-  const handleBack = () => {
-    if (step === 'confirm') {
-      setStep(mode === 'activation' ? 'country' : 'service');
-      setSelectedPricing(null);
-    } else if (step === 'country') {
-      setStep('service');
-      setSelectedCountry(null);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        {/* Title + My Numbers button */}
         <View style={styles.headerTop}>
           <View style={styles.headerTitleRow}>
             <Icon name="phone" size={20} color={colors.text} />
@@ -457,22 +914,50 @@ export default function NumbersScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Mode toggle */}
         <View style={styles.modeToggle}>
           {(['activation', 'rental'] as Mode[]).map((m) => (
             <TouchableOpacity
               key={m}
               style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
-              onPress={() => { setMode(m); resetFlow(); }}
+              onPress={() => {
+                setMode(m);
+                resetFlow();
+              }}
             >
               <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>
-                {m === 'activation' ? 'One-Time OTP' : 'Monthly Rental'}
+                {m === 'activation' ? 'One-Time OTP' : 'Long-Term Rental'}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Step breadcrumb */}
+        {mode === 'rental' && (
+          <View style={styles.reservationToggle}>
+            {(['renewable', 'nonrenewable'] as ReservationType[]).map((type) => {
+              const active = reservationType === type;
+              return (
+                <TouchableOpacity
+                  key={type}
+                  style={[styles.reservationBtn, active && styles.reservationBtnActive]}
+                  onPress={() => {
+                    setReservationType(type);
+                    setPage(1);
+                    setSearch('');
+                    setStep('service');
+                    setSelectedRentalService(null);
+                    setSelectedRentalCountry(null);
+                    setSelectedRentalOption(null);
+                  }}
+                >
+                  <Text style={[styles.reservationBtnText, active && styles.reservationBtnTextActive]}>
+                    {type === 'renewable' ? 'Renewable' : 'Non-Renewable'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         <View style={styles.stepRow}>
           {step !== 'service' && (
             <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
@@ -497,34 +982,83 @@ function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.bg },
     header: { padding: 16, paddingBottom: 8 },
+    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
     headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     headerTitle: { fontSize: 22, fontFamily: 'Poppins_700Bold', color: c.text },
-    modeToggle: { flexDirection: 'row', backgroundColor: c.toggleBg, borderRadius: 12, padding: 3, marginBottom: 12 },
+    modeToggle: { flexDirection: 'row', backgroundColor: c.toggleBg, borderRadius: 12, padding: 3, marginBottom: 10 },
     modeBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
     modeBtnActive: { backgroundColor: '#7C5CFC' },
     modeBtnText: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.textSub },
     modeBtnTextActive: { color: '#fff' },
+    reservationToggle: { flexDirection: 'row', backgroundColor: c.toggleBg, borderRadius: 10, padding: 3, marginBottom: 12 },
+    reservationBtn: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
+    reservationBtnActive: { backgroundColor: '#0ea5e9' },
+    reservationBtnText: { fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: c.textSub },
+    reservationBtnTextActive: { color: '#fff' },
     stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 4 },
     backBtnText: { color: '#7C5CFC', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
     stepLabel: { fontSize: 13, color: c.textSub, fontFamily: 'Poppins_500Medium' },
+    myNumbersBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: c.accentLight,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+    },
+    myNumbersBtnText: { color: '#7C5CFC', fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
     search: {
-      backgroundColor: c.input, borderRadius: 12, padding: 12, fontSize: 14,
-      color: c.text, marginHorizontal: 16, marginBottom: 12,
-      borderWidth: 1, borderColor: c.inputBorder,
+      backgroundColor: c.input,
+      borderRadius: 12,
+      padding: 12,
+      fontSize: 14,
+      color: c.text,
+      marginHorizontal: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: c.inputBorder,
     },
     grid: { padding: 16, paddingTop: 4, paddingBottom: 100, gap: 10 },
-    gridCard: { flex: 1, backgroundColor: c.card, borderRadius: 12, padding: 14, alignItems: 'center', gap: 8 },
+    gridCard: {
+      flex: 1,
+      backgroundColor: c.card,
+      borderRadius: 12,
+      padding: 14,
+      alignItems: 'center',
+      gap: 6,
+    },
     flagEmoji: { fontSize: 32 },
     gridLabel: { fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: c.text, textAlign: 'center' },
-    pagination: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
-    pageBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7C5CFC', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+    gridSubLabel: { fontSize: 11, color: c.textMuted, textAlign: 'center' },
+    pagination: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: 16,
+    },
+    pageBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: '#7C5CFC',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
     pageBtnDisabled: { backgroundColor: c.border },
     pageBtnText: { color: '#fff', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
     pageText: { color: c.text, fontSize: 13 },
     selectedBanner: {
-      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-      backgroundColor: c.accentLight, marginHorizontal: 16, marginBottom: 10, borderRadius: 10, padding: 10,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: c.accentLight,
+      marginHorizontal: 16,
+      marginBottom: 10,
+      borderRadius: 10,
+      padding: 10,
     },
     selectedBannerInner: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     selectedBannerText: { fontSize: 13, color: c.accentText, fontFamily: 'Poppins_600SemiBold' },
@@ -538,32 +1072,93 @@ function makeStyles(c: ThemeColors) {
     summaryVal: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.text },
     typeBadge: { backgroundColor: c.accentLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
     typeBadgeText: { color: c.accentText, fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
-    // Header top row
-    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    myNumbersBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.accentLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-    myNumbersBtnText: { color: '#7C5CFC', fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
-    // Rental list rows
-    rentalRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.card, borderRadius: 12, padding: 14, marginBottom: 8 },
-    rentalIconWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.accentLight, alignItems: 'center', justifyContent: 'center' },
+    successRateBadge: { backgroundColor: '#dcfce7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+    successRateText: { color: '#166534', fontSize: 12, fontFamily: 'Poppins_700Bold' },
+    ctaMetaRow: {
+      marginBottom: 8,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 2,
+    },
+    ctaMetaLabel: { fontSize: 12, color: c.textSub, fontFamily: 'Poppins_500Medium' },
+    findAnotherBtn: {
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: '#bae6fd',
+      backgroundColor: '#f0f9ff',
+      borderRadius: 12,
+      paddingVertical: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 6,
+    },
+    findAnotherBtnText: {
+      color: '#0369a1',
+      fontSize: 13,
+      fontFamily: 'Poppins_600SemiBold',
+    },
+    emptyStateBox: {
+      marginHorizontal: 16,
+      marginTop: 10,
+      backgroundColor: c.card,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      gap: 6,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    emptyStateTitle: { fontSize: 13, color: c.text, fontFamily: 'Poppins_600SemiBold' },
+    emptyStateText: { fontSize: 12, color: c.textSub, textAlign: 'center' },
+    emptyStateBtn: {
+      marginTop: 4,
+      backgroundColor: '#7C5CFC',
+      borderRadius: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+    },
+    emptyStateBtnText: { color: '#fff', fontSize: 12, fontFamily: 'Poppins_700Bold' },
+    rentalRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: c.card,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 8,
+    },
+    rentalIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: c.accentLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     rentalName: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: c.text },
     rentalSub: { fontSize: 12, color: c.textSub, marginTop: 2 },
-    // Pricing cards grid
     pricingGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-    pricingCard: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: c.cardAlt, borderWidth: 1.5, borderColor: c.border, alignItems: 'center', minWidth: 90 },
+    pricingCard: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 10,
+      backgroundColor: c.cardAlt,
+      borderWidth: 1.5,
+      borderColor: c.border,
+      alignItems: 'center',
+      minWidth: 120,
+    },
     pricingCardActive: { backgroundColor: '#7C5CFC', borderColor: '#7C5CFC' },
     pricingDuration: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.text },
     pricingPrice: { fontSize: 12, color: c.textSub, marginTop: 2 },
     pricingTextActive: { color: '#fff' },
     priceHighlight: { color: '#7C5CFC', fontSize: 15, fontFamily: 'Poppins_700Bold' },
     noOptions: { color: c.textSub, fontSize: 13, textAlign: 'center', paddingVertical: 12 },
-    // Duration (legacy kept for compat)
-    durationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-    durationBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: c.cardAlt, borderWidth: 1, borderColor: c.border },
-    durationBtnActive: { backgroundColor: '#7C5CFC', borderColor: '#7C5CFC' },
-    durationBtnText: { fontSize: 13, color: c.text },
-    durationBtnTextActive: { color: '#fff', fontFamily: 'Poppins_600SemiBold' },
     buyBtn: { backgroundColor: '#7C5CFC', borderRadius: 16, padding: 16, alignItems: 'center' },
     buyBtnDisabled: { opacity: 0.7 },
-    buyBtnText: { color: '#fff', fontSize: 16, fontFamily: 'Poppins_700Bold' },
+    buyBtnText: { color: '#fff', fontSize: 16, fontFamily: 'Poppins_700Bold', maxWidth: '92%' },
   });
 }

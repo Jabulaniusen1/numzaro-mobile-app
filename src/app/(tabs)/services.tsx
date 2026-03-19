@@ -433,11 +433,11 @@ export default function ServicesScreen() {
                 <View style={styles.summary}>
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Rate</Text>
-                    <Text style={styles.summaryVal}>₦{Number(selectedService.rate).toFixed(4)} / 1000</Text>
+                    <Text style={styles.summaryVal}>{format(Number(selectedService.rate))} / 1000</Text>
                   </View>
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Estimated Charge</Text>
-                    <Text style={[styles.summaryVal, { color: '#7C5CFC' }]}>₦{charge.toFixed(4)}</Text>
+                    <Text style={[styles.summaryVal, { color: '#7C5CFC' }]}>{format(charge)}</Text>
                   </View>
                   <View style={[styles.summaryRow, { marginBottom: 0 }]}>
                     <Text style={styles.summaryLabel}>Your Balance</Text>
@@ -453,7 +453,7 @@ export default function ServicesScreen() {
                   {mutation.isPending ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.submitBtnText}>Place Order — ₦{charge.toFixed(4)}</Text>
+                    <Text style={styles.submitBtnText}>Place Order — {format(charge)}</Text>
                   )}
                 </TouchableOpacity>
 

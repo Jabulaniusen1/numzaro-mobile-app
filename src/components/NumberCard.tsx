@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '@/hooks/useTheme';
+import { useCurrency } from '@/hooks/useCurrency';
 import { ThemeColors } from '@/lib/theme';
 import { StatusBadge } from './StatusBadge';
 import { CountdownTimer } from './CountdownTimer';
@@ -10,6 +11,7 @@ interface VirtualNumber {
   id: string;
   phone_number: string;
   product: string;
+  product_code?: string;
   country_name: string;
   country_code: string;
   monthly_cost: number;
@@ -28,6 +30,8 @@ interface Props {
   isProminent?: boolean;
   onViewMessages?: () => void;
   onViewOtps?: () => void;
+  onGetAnother?: () => void;
+  getAnotherLoading?: boolean;
 }
 
 export function NumberCard({
@@ -37,8 +41,11 @@ export function NumberCard({
   isProminent = false,
   onViewMessages,
   onViewOtps,
+  onGetAnother,
+  getAnotherLoading = false,
 }: Props) {
   const { colors } = useTheme();
+  const { format } = useCurrency();
   const styles = makeStyles(colors);
 
   const copyPhone = async () => {
@@ -134,7 +141,7 @@ export function NumberCard({
           <Icon name="placeholder" size={13} color={colors.textSub} />
           <Text style={styles.infoLabel}>
             {number.country_name}
-            {isRental && number.monthly_cost ? ` · $${number.monthly_cost}/mo` : ''}
+            {isRental && number.monthly_cost ? ` · ${format(number.monthly_cost)}/mo` : ''}
           </Text>
         </View>
       </View>
@@ -189,6 +196,26 @@ export function NumberCard({
         ))}
       </View>
 
+      {!isRental && onGetAnother && (
+        <TouchableOpacity
+          style={[styles.getAnotherBtn, getAnotherLoading && styles.getAnotherBtnDisabled]}
+          onPress={onGetAnother}
+          disabled={getAnotherLoading || !!actionLoading}
+        >
+          {getAnotherLoading ? (
+            <>
+              <ActivityIndicator size="small" color="#fff" />
+              <Text style={styles.getAnotherBtnText}>Generating...</Text>
+            </>
+          ) : (
+            <>
+              <Icon name="refresh" size={14} color="#fff" />
+              <Text style={styles.getAnotherBtnText}>Get another number</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+
       <View style={styles.viewLinks}>
         <TouchableOpacity onPress={onViewMessages} style={styles.viewLink}>
           <Icon name="message" size={14} color="#7C5CFC" />
@@ -235,6 +262,18 @@ function makeStyles(c: ThemeColors) {
     actionBtnDanger: { backgroundColor: '#ef4444' },
     actionBtnSecondary: { backgroundColor: '#6b7280' },
     actionBtnText: { color: '#fff', fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
+    getAnotherBtn: {
+      marginBottom: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: '#0ea5e9',
+      paddingVertical: 9,
+      borderRadius: 8,
+    },
+    getAnotherBtnDisabled: { opacity: 0.7 },
+    getAnotherBtnText: { color: '#fff', fontSize: 12, fontFamily: 'Poppins_700Bold' },
     viewLinks: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 },
     viewLink: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
     viewLinkText: { color: '#7C5CFC', fontSize: 13, fontFamily: 'Poppins_500Medium' },

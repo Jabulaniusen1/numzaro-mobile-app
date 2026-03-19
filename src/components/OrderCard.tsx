@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
 import { format, parseISO } from 'date-fns';
 import { useTheme } from '@/hooks/useTheme';
+import { useCurrency } from '@/hooks/useCurrency';
 import { ThemeColors } from '@/lib/theme';
 import { StatusBadge } from './StatusBadge';
 import { Icon } from './Icon';
@@ -21,6 +22,7 @@ interface Props {
 
 export function OrderCard({ item }: Props) {
   const { colors } = useTheme();
+  const { format: formatCurrency } = useCurrency();
   const styles = makeStyles(colors);
   const service = item.services;
   const dateStr = format(parseISO(item.created_at), 'MMM d, yyyy');
@@ -42,7 +44,7 @@ export function OrderCard({ item }: Props) {
       ) : null}
       <View style={styles.footer}>
         <Text style={styles.footerText}>{item.quantity.toLocaleString()} · {dateStr}</Text>
-        <Text style={styles.charge}>${Number(item.charge).toFixed(4)}</Text>
+        <Text style={styles.charge}>{formatCurrency(Number(item.charge))}</Text>
       </View>
     </View>
   );

@@ -6,63 +6,252 @@ async function getBearerHeaders() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
+
   if (!session) throw new Error('Not authenticated');
+
   return {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${session.access_token}`,
   };
 }
 
-async function apiFetch(path: string, options?: RequestInit) {
+async function apiFetch<T = any>(path: string, options?: RequestInit): Promise<T> {
+  if (!BASE_URL) throw new Error('Missing EXPO_PUBLIC_API_BASE_URL');
+
   const headers = await getBearerHeaders();
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: { ...headers, ...options?.headers },
   });
+
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? `Request failed: ${res.status}`);
-  return data;
+  if (!res.ok) throw new Error(data.error ?? data.message ?? `Request failed: ${res.status}`);
+  return data as T;
 }
 
-// ── Balance with currency conversion (uses EXCHANGE_RATE_API_KEY) ──
-export const fetchBalanceConverted = () => apiFetch('/api/user/balance');
+function buildQuery(params: Record<string, string | number | boolean | undefined | null>) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    query.set(key, String(value));
+  });
+  return query.toString();
+}
 
-// ── SMSPool (uses SMSPOOL_API_KEY) ──
-export const fetchSmsPoolServices = (mode: string, page: number) =>
-  apiFetch(`/api/smspool/services?mode=${mode}&page=${page}&limit=24`);
+export type ReservationType = 'renewable' | 'nonrenewable';
+
+export interface OneTimePurchasePayload {
+  serviceCode: string;
+  serviceName: string;
+  country: string;
+  countryName: string;
+  countryShortCode?: string;
+}
+
+export interface ActiveNumberForRepurchase {
+  id?: string;
+  product?: string;
+  product_code?: string;
+  serviceName?: string;
+  serviceCode?: string;
+  country_name?: string;
+  country_code?: string;
+  [key: string]: unknown;
+}
+
+export interface RentalPurchasePayload {
+  serviceName: string;
+  areaCode: string;
+  isRenewable: boolean;
+  duration:
+    | 'oneDay'
+    | 'threeDay'
+    | 'sevenDay'
+    | 'fourteenDay'
+    | 'thirtyDay'
+    | 'ninetyDay'
+    | 'oneYear';
+}
+
+// Balance and FX
+export const fetchConvertedBalance = () => apiFetch<{ balance?: string; currency?: string }>('/api/user/balance');
+
+export const fetchBalanceConverted = fetchConvertedBalance;
+
+export const fetchFxRate = (from: string, to: string) => {
+  const query = buildQuery({ from, to });
+  return apiFetch<{ rate?: number; from?: string; to?: string }>(`/api/currency/rate?${query}`);
+};
+
+// One-time (SMSPool activation)
+export const fetchSmsPoolServices = (page = 1, limit = 24) => {
+  const query = buildQuery({ page, limit, mode: 'activation' });
+  return apiFetch(`/api/smspool/services?${query}`);
+};
 
 export const fetchSmsPoolCountries = () => apiFetch('/api/smspool/countries');
 
-export const fetchPricing = (params: string) =>
-  apiFetch(`/api/smspool/pricing?${params}`);
+export const fetchSmsPoolPricing = (service: string, country: string) => {
+  const query = buildQuery({ service, country, mode: 'activation' });
+  return apiFetch(`/api/smspool/pricing?${query}`);
+};
 
-// ── Number purchase + actions (calls SMSPool API server-side) ──
-export const purchaseNumber = (body: object) =>
+export const purchaseOneTimeNumber = (payload: OneTimePurchasePayload) =>
   apiFetch('/api/numbers/purchase', {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 
+interface ResolvedCountry {
+  id: string;
+  name: string;
+  shortCode?: string;
+}
+
+function asArray(payload: any, keys: string[]): any[] {
+  if (Array.isArray(payload)) return payload;
+  for (const key of keys) {
+    if (Array.isArray(payload?.[key])) return payload[key];
+  }
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+function normalizeCountry(raw: any): ResolvedCountry {
+  const id = String(raw?.code ?? raw?.id ?? raw?.countryId ?? raw?.country_id ?? '');
+  const name = String(raw?.name ?? raw?.countryName ?? raw?.country_name ?? id);
+  const shortCode = raw?.shortCode ?? raw?.short_code ?? raw?.iso2 ?? raw?.alpha2;
+
+  return {
+    id: id || name,
+    name,
+    shortCode: shortCode ? String(shortCode).toUpperCase() : undefined,
+  };
+}
+
+export async function resolveSmsPoolCountryId(
+  shortCode?: string | null,
+  countryName?: string | null
+): Promise<ResolvedCountry> {
+  const payload = await fetchSmsPoolCountries();
+  const countries = asArray(payload, ['countries', 'items']).map(normalizeCountry);
+
+  if (!countries.length) {
+    throw new Error('Unable to resolve country: SMSPool countries list is empty.');
+  }
+
+  const normalizedShortCode = shortCode?.trim().toUpperCase();
+  const normalizedCountryName = countryName?.trim().toLowerCase();
+
+  if (normalizedShortCode) {
+    const byShortCode = countries.find((country) => country.shortCode?.toUpperCase() === normalizedShortCode);
+    if (byShortCode) return byShortCode;
+  }
+
+  if (normalizedCountryName) {
+    const byName = countries.find((country) => country.name.trim().toLowerCase() === normalizedCountryName);
+    if (byName) return byName;
+  }
+
+  throw new Error('Unable to resolve SMSPool country from active number metadata.');
+}
+
+export async function purchaseAnotherFromActiveNumber(activeNumber: ActiveNumberForRepurchase) {
+  const serviceCode = String(
+    activeNumber.product_code ??
+      activeNumber.serviceCode ??
+      activeNumber.service_code ??
+      ''
+  ).trim();
+
+  const serviceName = String(
+    activeNumber.product ??
+      activeNumber.serviceName ??
+      activeNumber.service_name ??
+      ''
+  ).trim();
+
+  const countryShortCode = String(
+    activeNumber.country_code ??
+      activeNumber.countryShortCode ??
+      activeNumber.country_short_code ??
+      ''
+  ).trim();
+
+  const countryName = String(
+    activeNumber.country_name ??
+      activeNumber.countryName ??
+      activeNumber.country ??
+      ''
+  ).trim();
+
+  if (!serviceCode || !serviceName || (!countryShortCode && !countryName)) {
+    throw new Error('Missing active number metadata for instant re-buy.');
+  }
+
+  const resolvedCountry = await resolveSmsPoolCountryId(countryShortCode || undefined, countryName || undefined);
+
+  return purchaseOneTimeNumber({
+    serviceCode,
+    serviceName,
+    country: resolvedCountry.id,
+    countryName: countryName || resolvedCountry.name,
+    countryShortCode: countryShortCode || resolvedCountry.shortCode,
+  });
+}
+
+// Rentals (Textverified/Grizzly)
+export const fetchRentalServices = (
+  page = 1,
+  limit = 24,
+  reservationType: ReservationType = 'renewable'
+) => {
+  const query = buildQuery({ page, limit, reservationType });
+  return apiFetch(`/api/grizzly/services?${query}`);
+};
+
+export const fetchRentalCountries = () => apiFetch('/api/grizzly/countries');
+
+export const fetchRentalPricing = (service: string, country: string, isRenewable: boolean) => {
+  const query = buildQuery({ mode: 'rental', service, country, isRenewable });
+  return apiFetch(`/api/grizzly/pricing?${query}`);
+};
+
+export const purchaseRental = (payload: RentalPurchasePayload) =>
+  apiFetch('/api/rentals/purchase', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+// Numbers actions + sync
 export const updateNumber = (id: string, action: string) =>
   apiFetch(`/api/numbers/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ action }),
   });
 
+export const fetchNumberMessages = (id: string) => apiFetch(`/api/numbers/${id}/messages`);
+
+export const fetchNumberOtps = (id: string) => apiFetch(`/api/numbers/${id}/otps`);
+
+// Compatibility aliases used by older screens
+export const purchaseNumber = purchaseOneTimeNumber;
+
+export const fetchPricing = (params: string) => apiFetch(`/api/smspool/pricing?${params}`);
+
 export const fetchUserNumbers = () => apiFetch('/api/numbers');
 
-export const cancelNumber = (id: string) =>
-  apiFetch(`/api/numbers/${id}`, { method: 'DELETE' });
+export const cancelNumber = (id: string) => updateNumber(id, 'cancel');
 
-export const fetchRentalPricing = (rentalId: string | number) =>
-  apiFetch(`/api/smspool/pricing?mode=rental&rentalId=${rentalId}`);
-
-// ── Social media order creation (calls SMM panel API server-side) ──
+// Social order creation
 export const createOrder = (body: object) =>
-  apiFetch('/api/orders/create', { method: 'POST', body: JSON.stringify(body) });
+  apiFetch('/api/orders/create', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 
-// ── Wallet funding (uses Paystack secret key) ──
-export const initWalletFund = (amount: number, currency: string) =>
+// Wallet funding + verification
+export const initWalletFund = (amount: number, currency = 'NGN') =>
   apiFetch('/api/wallet/fund', {
     method: 'POST',
     body: JSON.stringify({ amount, currency }),

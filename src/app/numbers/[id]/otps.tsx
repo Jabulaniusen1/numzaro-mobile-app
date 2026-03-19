@@ -1,57 +1,28 @@
-import { useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '@/lib/supabase';
-import { useAppStore } from '@/lib/store';
+import { fetchNumberOtps } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { Icon } from '@/components/Icon';
 
 export default function OtpsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const userId = useAppStore((s) => s.userId);
 
   const { data: otps = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['otps', id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('otp_codes')
-        .select('*')
-        .eq('number_id', id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
+      if (!id) return [];
+      const data = await fetchNumberOtps(id);
+      if (Array.isArray(data)) return data;
+      return data?.otps ?? data?.data ?? [];
     },
     enabled: !!id,
+    refetchInterval: 10000,
   });
-
-  // Realtime subscription for new OTPs
-  useEffect(() => {
-    if (!id) return;
-    const channel = supabase
-      .channel(`otps-screen-${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'otp_codes',
-          filter: `number_id=eq.${id}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['otps', id] });
-          queryClient.invalidateQueries({ queryKey: ['numbers', userId] });
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [id]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -89,7 +60,13 @@ export default function OtpsScreen() {
               <View style={styles.otpFooter}>
                 <StatusBadge status={item.status} />
                 <Text style={styles.time}>
-                  {format(parseISO(item.created_at), 'MMM d, HH:mm:ss')}
+                  {(() => {
+                    const createdAt = item.created_at ?? item.createdAt ?? item.received_at;
+                    if (!createdAt) return 'Unknown time';
+                    const date = new Date(createdAt);
+                    if (Number.isNaN(date.getTime())) return 'Unknown time';
+                    return format(date, 'MMM d, HH:mm:ss');
+                  })()}
                 </Text>
               </View>
             </View>

@@ -2,8 +2,8 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '@/lib/supabase';
-import { format, parseISO } from 'date-fns';
+import { fetchNumberMessages } from '@/lib/api';
+import { format } from 'date-fns';
 import { Icon } from '@/components/Icon';
 
 export default function MessagesScreen() {
@@ -13,13 +13,10 @@ export default function MessagesScreen() {
   const { data: messages = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['messages', id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('number_id', id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
+      if (!id) return [];
+      const data = await fetchNumberMessages(id);
+      if (Array.isArray(data)) return data;
+      return data?.messages ?? data?.data ?? [];
     },
     enabled: !!id,
   });
@@ -47,12 +44,18 @@ export default function MessagesScreen() {
           renderItem={({ item }: { item: any }) => (
             <View style={styles.messageCard}>
               <View style={styles.messageHeader}>
-                <Text style={styles.from}>From: {item.from ?? 'Unknown'}</Text>
+                <Text style={styles.from}>From: {item.from ?? item.sender ?? 'Unknown'}</Text>
                 <Text style={styles.time}>
-                  {format(parseISO(item.created_at), 'MMM d, HH:mm')}
+                  {(() => {
+                    const createdAt = item.created_at ?? item.createdAt ?? item.received_at;
+                    if (!createdAt) return 'Unknown time';
+                    const date = new Date(createdAt);
+                    if (Number.isNaN(date.getTime())) return 'Unknown time';
+                    return format(date, 'MMM d, HH:mm');
+                  })()}
                 </Text>
               </View>
-              <Text style={styles.body}>{item.body}</Text>
+              <Text style={styles.body}>{item.body ?? item.message ?? ''}</Text>
             </View>
           )}
           ListEmptyComponent={

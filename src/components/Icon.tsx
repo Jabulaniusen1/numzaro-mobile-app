@@ -64,6 +64,7 @@ interface Props {
 
 export function Icon({ name, size = 18, color = '#374151', style }: Props) {
   const code = ICONS[name];
+  const safeCode = typeof code === 'number' && Number.isInteger(code) ? code : ICONS.xmark;
   return (
     <Text
       style={[
@@ -77,7 +78,7 @@ export function Icon({ name, size = 18, color = '#374151', style }: Props) {
       ]}
       allowFontScaling={false}
     >
-      {String.fromCodePoint(code)}
+      {String.fromCodePoint(safeCode)}
     </Text>
   );
 }

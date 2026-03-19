@@ -14,7 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { updateNumber, cancelNumber } from '@/lib/api';
+import { purchaseAnotherFromActiveNumber, updateNumber } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/hooks/useTheme';
 import { ThemeColors } from '@/lib/theme';
@@ -35,6 +35,7 @@ export default function MyNumbersScreen() {
   const [tab, setTab] = useState<TabType>('active');
   const [search, setSearch] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [getAnotherLoadingId, setGetAnotherLoadingId] = useState<string | null>(null);
 
   const { data: numbers = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['numbers', userId],
@@ -126,7 +127,7 @@ export default function MyNumbersScreen() {
             onPress: async () => {
               setActionLoading('cancel');
               try {
-                await cancelNumber(numberId);
+                await updateNumber(numberId, 'cancel');
                 queryClient.invalidateQueries({ queryKey: ['numbers', userId] });
                 Alert.alert('Cancelled', 'Your rental subscription has been cancelled.');
               } catch (e: any) {
@@ -150,6 +151,39 @@ export default function MyNumbersScreen() {
       Alert.alert('Error', e.message);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleGetAnother = async (number: any) => {
+    if (!number?.id) return;
+    setGetAnotherLoadingId(number.id);
+
+    try {
+      await purchaseAnotherFromActiveNumber(number);
+      queryClient.invalidateQueries({ queryKey: ['numbers', userId] });
+      queryClient.invalidateQueries({ queryKey: ['balance', userId] });
+      Alert.alert('Success', 'New number generated successfully.');
+    } catch (e: any) {
+      const message = e?.message ?? 'Unable to generate another number.';
+      const looksLikeMetadataError = String(message).toLowerCase().includes('metadata');
+
+      if (looksLikeMetadataError) {
+        Alert.alert(
+          'Manual buy required',
+          'This number is missing metadata for instant re-buy. Open Buy Number flow instead?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Buy Screen', onPress: () => router.push('/(tabs)/numbers' as any) },
+          ]
+        );
+      } else {
+        Alert.alert('Error', message, [
+          { text: 'Close', style: 'cancel' },
+          { text: 'Retry', onPress: () => handleGetAnother(number) },
+        ]);
+      }
+    } finally {
+      setGetAnotherLoadingId(null);
     }
   };
 
@@ -244,6 +278,8 @@ export default function MyNumbersScreen() {
                   onAction={handleAction}
                   actionLoading={actionLoading}
                   isProminent
+                  onGetAnother={() => handleGetAnother(prominentNumber)}
+                  getAnotherLoading={getAnotherLoadingId === prominentNumber.id}
                   onViewMessages={() => router.push(`/numbers/${prominentNumber.id}/messages` as any)}
                   onViewOtps={() => router.push(`/numbers/${prominentNumber.id}/otps` as any)}
                 />
