@@ -24,15 +24,16 @@ import { format, parseISO } from 'date-fns';
 interface QuickLink {
   icon: IconName;
   label: string;
+  desc: string;
   route: string;
   color: string;
 }
 
 const QUICK_LINKS: QuickLink[] = [
-  { icon: 'rocket',  label: 'Boost Socials',    route: '/(tabs)/services', color: '#7C5CFC' },
-  { icon: 'phone',   label: 'Virtual Numbers',  route: '/(tabs)/numbers',  color: '#0ea5e9' },
-  { icon: 'box',     label: 'My Orders',        route: '/(tabs)/orders',   color: '#f59e0b' },
-  { icon: 'bell',    label: 'Notifications',    route: '/notifications',   color: '#22c55e' },
+  { icon: 'rocket',  label: 'Boost Socials',   desc: 'Grow followers & engagement', route: '/(tabs)/services', color: '#7C5CFC' },
+  { icon: 'phone',   label: 'Virtual Numbers', desc: 'Get temporary phone numbers',  route: '/(tabs)/numbers',  color: '#0ea5e9' },
+  { icon: 'box',     label: 'My Orders',       desc: 'Track all your orders',        route: '/(tabs)/orders',   color: '#f59e0b' },
+  { icon: 'bell',    label: 'Notifications',   desc: 'Alerts & updates',             route: '/notifications',   color: '#22c55e' },
 ];
 
 export default function DashboardScreen() {
@@ -83,6 +84,7 @@ export default function DashboardScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="#7C5CFC" />}
     >
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.headerTitleRow}>
@@ -91,9 +93,9 @@ export default function DashboardScreen() {
               style={styles.headerLogo}
               resizeMode="contain"
             />
-            <Text style={styles.headerTitle}>Dashboard</Text>
+            <Text style={styles.headerTitle}>numzaro</Text>
           </View>
-          <Text style={styles.headerSub}>Welcome back, {firstName}</Text>
+          <Text style={styles.headerSub}>Hey {firstName}, what would you like to do?</Text>
         </View>
         <TouchableOpacity
           style={styles.notifBtn}
@@ -103,24 +105,32 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Compact Balance Strip */}
       <BalanceCard />
 
-      <Text style={styles.sectionTitle}>Quick Access</Text>
-      <View style={styles.quickGrid}>
+      {/* Quick Access — hero section */}
+      <Text style={styles.sectionTitle}>Services</Text>
+      <View style={styles.heroGrid}>
         {QUICK_LINKS.map((link) => (
           <TouchableOpacity
             key={link.label}
-            style={styles.quickItem}
+            style={styles.heroItem}
             onPress={() => router.push(link.route as any)}
+            activeOpacity={0.75}
           >
-            <View style={[styles.quickIcon, { backgroundColor: `${link.color}18` }]}>
-              <Icon name={link.icon} size={26} color={link.color} />
+            <View style={[styles.heroIconWrap, { backgroundColor: `${link.color}18` }]}>
+              <Icon name={link.icon} size={30} color={link.color} />
             </View>
-            <Text style={styles.quickLabel}>{link.label}</Text>
+            <View style={styles.heroText}>
+              <Text style={styles.heroLabel}>{link.label}</Text>
+              <Text style={styles.heroDesc}>{link.desc}</Text>
+            </View>
+            <Icon name="arrowRight" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         ))}
       </View>
 
+      {/* Recent Orders */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent Orders</Text>
         <TouchableOpacity onPress={() => router.push('/(tabs)/orders' as any)}>
@@ -164,18 +174,20 @@ function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.bg },
     content: { paddingBottom: 100 },
+
     header: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       padding: 20,
       paddingTop: 60,
+      marginBottom: 12,
     },
     headerLeft: { flex: 1 },
     headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     headerLogo: { width: 22, height: 22 },
-    headerTitle: { fontSize: 26, fontFamily: 'Poppins_700Bold', color: c.text },
-    headerSub: { fontSize: 14, color: c.textSub, marginTop: 2 },
+    headerTitle: { fontSize: 22, fontFamily: 'Poppins_700Bold', color: c.text },
+    headerSub: { fontSize: 13, color: c.textSub, marginTop: 2 },
     notifBtn: {
       padding: 8,
       backgroundColor: c.card,
@@ -186,13 +198,46 @@ function makeStyles(c: ThemeColors) {
       shadowRadius: 4,
       elevation: 2,
     },
-    sectionTitle: { fontSize: 16, fontFamily: 'Poppins_700Bold', color: c.text, paddingHorizontal: 16, marginBottom: 12 },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 16, marginTop: 8 },
+
+    sectionTitle: {
+      fontSize: 16,
+      fontFamily: 'Poppins_700Bold',
+      color: c.text,
+      paddingHorizontal: 16,
+      marginBottom: 10,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingRight: 16,
+      marginTop: 8,
+      marginBottom: 2,
+    },
     viewAll: { color: c.accent, fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
-    quickGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, marginBottom: 24, gap: 8 },
-    quickItem: { width: '47%', backgroundColor: c.card, borderRadius: 14, padding: 16, alignItems: 'center' },
-    quickIcon: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-    quickLabel: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.text, textAlign: 'center' },
+
+    // Hero quick-access list
+    heroGrid: { paddingHorizontal: 16, gap: 10, marginBottom: 28 },
+    heroItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.card,
+      borderRadius: 16,
+      padding: 16,
+      gap: 14,
+    },
+    heroIconWrap: {
+      width: 56,
+      height: 56,
+      borderRadius: 16,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    heroText: { flex: 1 },
+    heroLabel: { fontSize: 15, fontFamily: 'Poppins_700Bold', color: c.text },
+    heroDesc: { fontSize: 12, color: c.textSub, marginTop: 2 },
+
+    // Orders
     orderRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -208,6 +253,7 @@ function makeStyles(c: ThemeColors) {
     orderDate: { fontSize: 11, color: c.textMuted, marginTop: 2 },
     orderRight: { alignItems: 'flex-end', gap: 4 },
     orderCharge: { fontSize: 13, fontFamily: 'Poppins_700Bold', color: c.text },
+
     emptyBox: { alignItems: 'center', padding: 32, gap: 8 },
     emptyText: { color: c.textSub, fontSize: 14, marginBottom: 8 },
     emptyBtn: { backgroundColor: c.accent, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
