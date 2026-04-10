@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
@@ -36,7 +35,8 @@ export default function BuyEsimScreen() {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
-  const [buyingCode, setBuyingCode] = useState<string | null>(null);
+  const [selectedPackageCode, setSelectedPackageCode] = useState<string | null>(null);
+  const [plansOpen, setPlansOpen] = useState(false);
 
   const countriesQuery = useQuery({
     queryKey: ['esim-countries'],
@@ -48,16 +48,19 @@ export default function BuyEsimScreen() {
   const packagesQuery = useQuery({
     queryKey: ['esim-packages', selectedCountry],
     queryFn: () => fetchEsimPackages(selectedCountry ?? undefined),
+    enabled: !!selectedCountry,
   });
+
+  const packages = packagesQuery.data?.packages ?? [];
+  const selectedPackage = packages.find((item) => String(item.packageCode) === selectedPackageCode) ?? null;
 
   const purchaseMutation = useMutation({
     mutationFn: purchaseEsim,
-    onSuccess: (result) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['esim-orders-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['esim-order-detail'] });
-      Alert.alert('eSIM purchased', 'Your eSIM order was created successfully.', [
-        { text: 'View Order', onPress: () => router.push({ pathname: '/esim/[id]', params: { id: result.order.id } } as any) },
-        { text: 'My eSIMs', onPress: () => router.push('/esim/my' as any) },
+      Alert.alert('eSIM purchased', 'Purchase successful. You will be redirected to My eSIMs.', [
+        { text: 'Go to My eSIMs', onPress: () => router.replace('/esim/my' as any) },
       ]);
     },
     onError: (error) => {
@@ -70,20 +73,23 @@ export default function BuyEsimScreen() {
       }
       Alert.alert('Purchase failed', (error as Error).message);
     },
-    onSettled: () => setBuyingCode(null),
   });
 
-  const packages = packagesQuery.data?.packages ?? [];
+  const onSelectCountry = (countryCode: string) => {
+    setSelectedCountry(countryCode);
+    setSelectedPackageCode(null);
+    setPlansOpen(false);
+  };
 
-  const onBuyPackage = (pkg: any) => {
-    setBuyingCode(pkg.packageCode);
+  const onOrder = () => {
+    if (!selectedPackage) return;
     purchaseMutation.mutate({
-      packageCode: String(pkg.packageCode),
-      packageName: pkg.name,
-      location: pkg.location ?? 'Unknown',
-      duration: formatDuration(pkg.duration, pkg.durationUnit),
-      dataVolume: formatDataVolume(pkg.dataFormatted, pkg.volume),
-      providerPrice: Number(pkg.price),
+      packageCode: String(selectedPackage.packageCode),
+      packageName: selectedPackage.name,
+      location: selectedPackage.location ?? 'Unknown',
+      duration: formatDuration(selectedPackage.duration, selectedPackage.durationUnit),
+      dataVolume: formatDataVolume(selectedPackage.dataFormatted, selectedPackage.volume),
+      providerPrice: Number(selectedPackage.price),
     });
   };
 
@@ -94,91 +100,125 @@ export default function BuyEsimScreen() {
           <Icon name="chevronLeft" size={22} color="#7C5CFC" />
         </TouchableOpacity>
         <Text style={styles.title}>Buy eSIM</Text>
-        <TouchableOpacity onPress={() => router.push('/esim/my' as any)} style={styles.topUpBtn}>
-          <Text style={styles.topUpText}>My eSIMs</Text>
+        <TouchableOpacity onPress={() => router.push('/esim/my' as any)} style={styles.topBtn}>
+          <Text style={styles.topBtnText}>My eSIMs</Text>
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={packages}
-        keyExtractor={(item) => item.packageCode}
+      <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={countriesQuery.isRefetching || packagesQuery.isRefetching}
             onRefresh={() => {
               countriesQuery.refetch();
-              packagesQuery.refetch();
+              if (selectedCountry) packagesQuery.refetch();
             }}
             tintColor="#7C5CFC"
           />
         }
-        ListHeaderComponent={
-          <View style={styles.blockGap}>
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Select Country</Text>
-              {countriesQuery.isLoading ? (
-                <ActivityIndicator size="small" color="#7C5CFC" />
-              ) : (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.countryScroll}>
-                  {countries.map((country) => {
-                    const active = selectedCountry === country.code;
-                    return (
-                      <TouchableOpacity
-                        key={country.code}
-                        style={[styles.countryChip, active && styles.countryChipActive]}
-                        onPress={() => setSelectedCountry(country.code)}
-                      >
-                        <Text style={styles.countryChipText}>
-                          {country.flag ? `${country.flag} ` : ''}
-                          {country.name}
-                        </Text>
-                        <Text style={styles.countryChipSub}>
-                          from ${country.startingChargedUsd ?? country.startingPriceUsd ?? '-'}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
-            </View>
+      >
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Select Country</Text>
+          {countriesQuery.isLoading ? (
+            <ActivityIndicator size="small" color="#7C5CFC" />
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.countryScroll}>
+              {countries.map((country) => {
+                const active = selectedCountry === country.code;
+                return (
+                  <TouchableOpacity
+                    key={country.code}
+                    style={[styles.countryChip, active && styles.countryChipActive]}
+                    onPress={() => onSelectCountry(country.code)}
+                  >
+                    <Text style={styles.countryChipText}>{country.flag ? `${country.flag} ` : ''}{country.name}</Text>
+                    <Text style={styles.countryChipSub}>from ${country.startingChargedUsd ?? country.startingPriceUsd ?? '-'}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
 
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Packages</Text>
-              {packagesQuery.isLoading ? (
-                <ActivityIndicator size="small" color="#7C5CFC" />
-              ) : packages.length === 0 ? (
-                <Text style={styles.emptyText}>Select a country to view available eSIM packages.</Text>
-              ) : null}
-            </View>
+        {!!selectedCountry && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Important Information</Text>
+            <Text style={styles.noticeText}>
+              You are purchasing an eSIM, please make sure that eSIMs are supported on your device and that the eSIM
+              is activated within 180 days. After purchase, you will be redirected to your eSIMs page and you can
+              activate it instantly.
+            </Text>
+            <Text style={styles.noticeText}>
+              Important: eSIMs are non-refundable and non-transferable, please keep in mind that these are data-only
+              SIMs. The eSIM can only be redeemed in the country of the eSIM, as we require roaming the eSIM IP might
+              not always match the country.
+            </Text>
+            <Text style={styles.noticeText}>
+              We cannnot refund your eSIM in case your device does not support eSIM, please make sure to check if your
+              device supports it before purchasing
+            </Text>
           </View>
-        }
-        renderItem={({ item }) => {
-          const isBuying = buyingCode === item.packageCode && purchaseMutation.isPending;
-          return (
-            <View style={styles.packageCard}>
-              <Text style={styles.packageName}>{item.name}</Text>
-              <Text style={styles.packageMeta}>
-                {formatDataVolume(item.dataFormatted, item.volume)} • {formatDuration(item.duration, item.durationUnit)}
-              </Text>
-              <Text style={styles.packageMeta}>Location: {item.location ?? 'Unknown'}</Text>
-              <View style={styles.packageFooter}>
-                <View>
-                  <Text style={styles.priceLabel}>You pay</Text>
-                  <Text style={styles.priceValue}>${item.chargedUsd}</Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.buyBtn, isBuying && styles.buyBtnDisabled]}
-                  onPress={() => onBuyPackage(item)}
-                  disabled={isBuying}
-                >
-                  {isBuying ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.buyBtnText}>Buy eSIM</Text>}
+        )}
+
+        {!!selectedCountry && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Select Plan</Text>
+            {packagesQuery.isLoading ? (
+              <ActivityIndicator size="small" color="#7C5CFC" />
+            ) : packages.length === 0 ? (
+              <Text style={styles.emptyText}>No plans available for this country right now.</Text>
+            ) : (
+              <>
+                <TouchableOpacity style={styles.dropdownHeader} onPress={() => setPlansOpen((v) => !v)}>
+                  <Text style={styles.dropdownHeaderText}>
+                    {selectedPackage ? `${selectedPackage.name} • $${selectedPackage.chargedUsd}` : 'Choose a plan'}
+                  </Text>
+                  <Icon name={plansOpen ? 'chevronUp' : 'chevronDown'} size={18} color={colors.textSub} />
                 </TouchableOpacity>
-              </View>
-            </View>
-          );
-        }}
-      />
+
+                {plansOpen && (
+                  <View style={styles.dropdownList}>
+                    {packages.map((item) => {
+                      const active = String(item.packageCode) === selectedPackageCode;
+                      return (
+                        <TouchableOpacity
+                          key={item.packageCode}
+                          style={[styles.planRow, active && styles.planRowActive]}
+                          onPress={() => {
+                            setSelectedPackageCode(String(item.packageCode));
+                            setPlansOpen(false);
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.planName}>{item.name}</Text>
+                            <Text style={styles.planMeta}>
+                              {formatDataVolume(item.dataFormatted, item.volume)} • {formatDuration(item.duration, item.durationUnit)}
+                            </Text>
+                          </View>
+                          <Text style={styles.planPrice}>${item.chargedUsd}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.orderBtn, (!selectedPackage || purchaseMutation.isPending) && styles.orderBtnDisabled]}
+                  onPress={onOrder}
+                  disabled={!selectedPackage || purchaseMutation.isPending}
+                >
+                  {purchaseMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.orderBtnText}>Order eSIM</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -189,10 +229,9 @@ function makeStyles(c: ThemeColors) {
     header: { padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     backBtn: { padding: 4 },
     title: { fontSize: 20, fontFamily: 'Poppins_700Bold', color: c.text },
-    topUpBtn: { paddingHorizontal: 8, paddingVertical: 4 },
-    topUpText: { color: '#7C5CFC', fontFamily: 'Poppins_600SemiBold', fontSize: 13 },
+    topBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+    topBtnText: { color: '#7C5CFC', fontFamily: 'Poppins_600SemiBold', fontSize: 13 },
     content: { padding: 16, paddingTop: 8, paddingBottom: 24, gap: 10 },
-    blockGap: { gap: 10, marginBottom: 10 },
     card: {
       backgroundColor: c.card,
       borderColor: c.border,
@@ -215,23 +254,44 @@ function makeStyles(c: ThemeColors) {
     countryChipActive: { borderColor: '#7C5CFC', backgroundColor: '#F4F0FF' },
     countryChipText: { color: c.text, fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
     countryChipSub: { color: c.textSub, fontSize: 11, marginTop: 2 },
-    packageCard: {
-      backgroundColor: c.card,
-      borderColor: c.border,
+    noticeText: { color: c.textSub, fontSize: 12, lineHeight: 18 },
+    dropdownHeader: {
       borderWidth: 1,
-      borderRadius: 12,
-      padding: 12,
-      gap: 6,
-      marginBottom: 10,
+      borderColor: c.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: c.cardAlt,
     },
-    packageName: { color: c.text, fontSize: 14, fontFamily: 'Poppins_600SemiBold' },
-    packageMeta: { color: c.textSub, fontSize: 12 },
-    packageFooter: { marginTop: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    priceLabel: { color: c.textMuted, fontSize: 11 },
-    priceValue: { color: c.text, fontSize: 18, fontFamily: 'Poppins_700Bold' },
-    buyBtn: { backgroundColor: '#7C5CFC', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
-    buyBtnDisabled: { opacity: 0.8 },
-    buyBtnText: { color: '#fff', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
+    dropdownHeaderText: { color: c.text, fontSize: 13, fontFamily: 'Poppins_500Medium', flex: 1, paddingRight: 8 },
+    dropdownList: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      overflow: 'hidden',
+      marginTop: 8,
+    },
+    planRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+      gap: 8,
+      backgroundColor: c.card,
+    },
+    planRowActive: { backgroundColor: '#F4F0FF' },
+    planName: { color: c.text, fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
+    planMeta: { color: c.textSub, fontSize: 12, marginTop: 2 },
+    planPrice: { color: c.text, fontSize: 13, fontFamily: 'Poppins_700Bold' },
+    orderBtn: { backgroundColor: '#7C5CFC', borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
+    orderBtnDisabled: { opacity: 0.55 },
+    orderBtnText: { color: '#fff', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
     emptyText: { color: c.textSub, fontSize: 13 },
   });
 }
