@@ -33,7 +33,7 @@ const QUICK_LINKS: QuickLink[] = [
   { icon: 'rocket',  label: 'Boost Socials',   desc: 'Grow followers & engagement', route: '/(tabs)/services', color: '#7C5CFC' },
   { icon: 'phone',   label: 'Virtual Numbers', desc: 'Get temporary phone numbers',  route: '/(tabs)/numbers',  color: '#0ea5e9' },
   { icon: 'box',     label: 'My Orders',       desc: 'Track all your orders',        route: '/(tabs)/orders',   color: '#f59e0b' },
-  { icon: 'bell',    label: 'Notifications',   desc: 'Alerts & updates',             route: '/notifications',   color: '#22c55e' },
+  { icon: 'clipboard', label: 'eSIM',          desc: 'Buy and manage your eSIMs',    route: '/esim',            color: '#22c55e' },
 ];
 
 export default function DashboardScreen() {
@@ -97,12 +97,6 @@ export default function DashboardScreen() {
           </View>
           <Text style={styles.headerSub}>Hey {firstName}, what would you like to do?</Text>
         </View>
-        <TouchableOpacity
-          style={styles.notifBtn}
-          onPress={() => router.push('/notifications' as any)}
-        >
-          <Icon name="bell" size={22} color={colors.text} />
-        </TouchableOpacity>
       </View>
 
       {/* Compact Balance Strip */}
@@ -188,17 +182,6 @@ function makeStyles(c: ThemeColors) {
     headerLogo: { width: 22, height: 22 },
     headerTitle: { fontSize: 22, fontFamily: 'Poppins_700Bold', color: c.text },
     headerSub: { fontSize: 13, color: c.textSub, marginTop: 2 },
-    notifBtn: {
-      padding: 8,
-      backgroundColor: c.card,
-      borderRadius: 12,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 4,
-      elevation: 2,
-    },
-
     sectionTitle: {
       fontSize: 16,
       fontFamily: 'Poppins_700Bold',

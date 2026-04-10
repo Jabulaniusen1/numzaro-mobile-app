@@ -2,6 +2,22 @@ import { supabase } from './supabase';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
+export class ApiError extends Error {
+  status: number;
+  payload: unknown;
+
+  constructor(message: string, status: number, payload?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
+export function isApiErrorWithStatus(error: unknown, status: number) {
+  return error instanceof ApiError && error.status === status;
+}
+
 async function getBearerHeaders() {
   const {
     data: { session },
@@ -24,8 +40,17 @@ async function apiFetch<T = any>(path: string, options?: RequestInit): Promise<T
     headers: { ...headers, ...options?.headers },
   });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? data.message ?? `Request failed: ${res.status}`);
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    throw new ApiError(data?.error ?? data?.message ?? `Request failed: ${res.status}`, res.status, data);
+  }
+
   return data as T;
 }
 
@@ -71,6 +96,88 @@ export interface RentalPurchasePayload {
     | 'thirtyDay'
     | 'ninetyDay'
     | 'oneYear';
+}
+
+export interface EsimCountry {
+  code: string;
+  name: string;
+  flag?: string;
+  startingPriceUsd?: number;
+  startingChargedUsd?: number;
+}
+
+export interface EsimPackage {
+  packageCode: string;
+  slug?: string;
+  name: string;
+  price: number;
+  currencyCode: string;
+  volume?: number;
+  duration?: number;
+  durationUnit?: string;
+  location?: string;
+  priceUsd?: number;
+  chargedUsd: number;
+  dataFormatted?: string;
+}
+
+export interface PurchaseEsimPayload {
+  packageCode: string;
+  packageName: string;
+  location: string;
+  duration: string;
+  dataVolume: string;
+  providerPrice: number;
+}
+
+export interface EsimOrder {
+  id: string;
+  package_name?: string;
+  location?: string;
+  duration?: string;
+  data_volume?: string;
+  order_no?: string | null;
+  esim_tran_no?: string | null;
+  iccid?: string | null;
+  qr_code_url?: string | null;
+  ac?: string | null;
+  smdp_address?: string | null;
+  status?: string;
+  esim_status?: string;
+  provider_cost?: number;
+  charged_amount?: number;
+  [key: string]: unknown;
+}
+
+export interface EsimUsagePayload {
+  orderId?: string;
+  esimTranNo?: string;
+}
+
+export interface EsimUsage {
+  esimTranNo?: string;
+  dataUsedBytes?: number;
+  totalDataBytes?: number;
+  dataUsedFormatted?: string;
+  totalDataFormatted?: string;
+  remainingBytes?: number;
+  remainingFormatted?: string;
+  percentUsed?: number;
+  lastUpdateTime?: string;
+}
+
+export interface PlatfoneService {
+  id?: string | number;
+  serviceId?: string | number;
+  name?: string;
+  [key: string]: unknown;
+}
+
+export interface PlatfoneCountry {
+  id?: string | number;
+  countryId?: string | number;
+  name?: string;
+  [key: string]: unknown;
 }
 
 // Balance and FX
@@ -222,6 +329,57 @@ export const purchaseRental = (payload: RentalPurchasePayload) =>
     method: 'POST',
     body: JSON.stringify(payload),
   });
+
+// eSIM (SMSPool-backed)
+export const fetchEsimCountries = () =>
+  apiFetch<{ countries: EsimCountry[] }>('/api/esim/countries');
+
+export const fetchEsimPackages = (locationCode?: string) =>
+  apiFetch<{ packages: EsimPackage[] }>('/api/esim/packages', {
+    method: 'POST',
+    body: JSON.stringify(locationCode ? { locationCode } : {}),
+  });
+
+export const purchaseEsim = (payload: PurchaseEsimPayload) =>
+  apiFetch<{ success: boolean; order: EsimOrder }>('/api/esim/order', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const fetchEsimOrders = (page = 1, limit = 20) => {
+  const query = buildQuery({ page, limit });
+  return apiFetch<{ orders: EsimOrder[]; pagination?: { page: number; limit: number; total: number; totalPages: number } }>(
+    `/api/esim/orders?${query}`
+  );
+};
+
+export const fetchEsimUsage = ({ orderId, esimTranNo }: EsimUsagePayload) =>
+  apiFetch<{ usage: EsimUsage }>('/api/esim/usage', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...(orderId ? { orderId } : {}),
+      ...(esimTranNo ? { esimTranNo } : {}),
+    }),
+  });
+
+// Platfone
+export const fetchPlatfoneServices = () =>
+  apiFetch<{ services?: PlatfoneService[]; data?: PlatfoneService[] }>('/api/platfone/services');
+
+export const fetchPlatfoneCountries = (service: string | number) => {
+  const query = buildQuery({ service });
+  return apiFetch<{ countries?: PlatfoneCountry[]; data?: PlatfoneCountry[] }>(`/api/platfone/countries?${query}`);
+};
+
+export const fetchPlatfonePricing = (service: string | number, country?: string | number) => {
+  const query = buildQuery({ service, country });
+  return apiFetch(`/api/platfone/pricing?${query}`);
+};
+
+export const fetchPlatfoneActivations = (type: 'active' | 'history', page = 1, perPage = 25) => {
+  const query = buildQuery({ type, page, per_page: perPage });
+  return apiFetch(`/api/platfone/activations?${query}`);
+};
 
 // Numbers actions + sync
 export const updateNumber = (id: string, action: string) =>

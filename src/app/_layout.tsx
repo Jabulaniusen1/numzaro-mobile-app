@@ -84,6 +84,10 @@ export default function RootLayout() {
         <Stack.Screen name="numbers/[id]/messages" options={{ headerShown: false }} />
         <Stack.Screen name="numbers/[id]/otps" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
+        <Stack.Screen name="esim/index" options={{ headerShown: false }} />
+        <Stack.Screen name="esim/buy" options={{ headerShown: false }} />
+        <Stack.Screen name="esim/my" options={{ headerShown: false }} />
+        <Stack.Screen name="esim/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="transactions" options={{ headerShown: false }} />
         <Stack.Screen name="fund-wallet" options={{ headerShown: false }} />
       </Stack>

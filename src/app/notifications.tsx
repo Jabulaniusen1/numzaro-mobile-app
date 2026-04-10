@@ -27,7 +27,43 @@ const TYPES = [
   { key: 'subscription_reminder', label: 'Reminders',    color: '#f59e0b' },
   { key: 'expiration_reminder',   label: 'Expiration',   color: '#8b5cf6' },
   { key: 'payment_failed',        label: 'Failed',       color: '#ef4444' },
+  { key: 'esim_purchased',        label: 'eSIM',         color: '#7C5CFC' },
+  { key: 'esim_status_update',    label: 'eSIM Status',  color: '#2563eb' },
+  { key: 'esim_data_usage',       label: 'eSIM Usage',   color: '#f59e0b' },
+  { key: 'esim_expiring',         label: 'eSIM Expiry',  color: '#ef4444' },
 ];
+
+const ESIM_NOTIFICATION_TYPES = new Set([
+  'esim_purchased',
+  'esim_status_update',
+  'esim_data_usage',
+  'esim_expiring',
+]);
+
+function parseNotificationData(data: unknown): Record<string, any> {
+  if (!data) return {};
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof data === 'object') return data as Record<string, any>;
+  return {};
+}
+
+function getEsimOrderId(notif: any): string | null {
+  const payload = parseNotificationData(notif?.data);
+  const id =
+    payload.esim_order_id ??
+    payload.esimOrderId ??
+    payload.order_id ??
+    payload.orderId ??
+    null;
+  return id ? String(id) : null;
+}
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -101,7 +137,19 @@ export default function NotificationsScreen() {
 
   const handleNotifPress = (notif: any) => {
     markAsRead(notif.id);
-    if (notif.data?.order_id) {
+    const esimOrderId = getEsimOrderId(notif);
+
+    if (ESIM_NOTIFICATION_TYPES.has(notif.type) && esimOrderId) {
+      router.push({ pathname: '/esim/[id]', params: { id: esimOrderId } } as any);
+      return;
+    }
+
+    if (esimOrderId) {
+      router.push({ pathname: '/esim/[id]', params: { id: esimOrderId } } as any);
+      return;
+    }
+
+    if (parseNotificationData(notif.data).order_id) {
       router.push('/(tabs)/orders' as any);
     }
   };

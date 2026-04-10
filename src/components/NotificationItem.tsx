@@ -25,6 +25,10 @@ const TYPE_ICONS: Record<string, IconName> = {
   subscription_reminder:  'calendar',
   expiration_reminder:    'minusCircle',
   payment_failed:         'xmark',
+  esim_purchased:         'checkCircle',
+  esim_status_update:     'refresh',
+  esim_data_usage:        'barChartDollar',
+  esim_expiring:          'calendar',
 };
 
 export function NotificationItem({ item, onPress }: Props) {
