@@ -51,6 +51,17 @@ const ICONS = {
   transactions: 'bar-chart-outline',
   numbers: 'call-outline',
   eyeOff: 'eye-off-outline',
+  qrCode: 'qr-code-outline',
+  copy: 'copy-outline',
+  logoAndroid: 'logo-android',
+  logoApple: 'logo-apple',
+  wifi: 'wifi-outline',
+  smartphone: 'phone-portrait-outline',
+  sim: 'cellular-outline',
+  globe: 'globe-outline',
+  time: 'time-outline',
+  database: 'server-outline',
+  openInBrowser: 'open-outline',
 } as const;
 
 export type IconName = keyof typeof ICONS;
