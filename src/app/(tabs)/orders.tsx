@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   ScrollView,
   RefreshControl,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -30,11 +30,38 @@ const STATUSES = [
 
 export default function OrdersScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.userId);
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [page, setPage] = useState(1);
   const { colors } = useTheme();
   const styles = makeStyles(colors);
+
+  // Realtime subscription — invalidates the orders query whenever any row
+  // belonging to this user changes status, remains, or start_count
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`orders-realtime-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['orders'] });
+          queryClient.invalidateQueries({ queryKey: ['order-detail'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, queryClient]);
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['orders', page, selectedStatus, userId],
@@ -43,7 +70,7 @@ export default function OrdersScreen() {
       const to = from + 19;
       let query = supabase
         .from('orders')
-        .select('*, services(name, category, type)', { count: 'exact' })
+        .select('id, status, charge, quantity, start_count, remains, link, created_at, services(name, category, type)', { count: 'exact' })
         .eq('user_id', userId!)
         .order('created_at', { ascending: false })
         .range(from, to);
@@ -105,7 +132,12 @@ export default function OrdersScreen() {
           refreshControl={
             <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor="#7C5CFC" />
           }
-          renderItem={({ item }) => <OrderCard item={item} />}
+          renderItem={({ item }) => (
+            <OrderCard
+              item={item}
+              onPress={() => router.push({ pathname: '/orders/[id]', params: { id: item.id } } as any)}
+            />
+          )}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Icon name="box" size={48} color="#d1d5db" />

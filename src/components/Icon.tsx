@@ -62,6 +62,7 @@ const ICONS = {
   time: 'time-outline',
   database: 'server-outline',
   openInBrowser: 'open-outline',
+  info: 'information-circle-outline',
 } as const;
 
 export type IconName = keyof typeof ICONS;

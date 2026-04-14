@@ -408,6 +408,18 @@ export const createOrder = (body: object) =>
     body: JSON.stringify(body),
   });
 
+export const cancelOrder = (orderId: string) =>
+  apiFetch('/api/orders/cancel', {
+    method: 'POST',
+    body: JSON.stringify({ orderId }),
+  });
+
+export const refillOrder = (orderId: string) =>
+  apiFetch('/api/orders/refill', {
+    method: 'POST',
+    body: JSON.stringify({ orderId }),
+  });
+
 // Wallet funding + verification
 export const initWalletFund = (amount: number, currency = 'NGN') =>
   apiFetch('/api/wallet/fund', {
