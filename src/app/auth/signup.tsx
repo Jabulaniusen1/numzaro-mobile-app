@@ -102,11 +102,10 @@ export default function SignupScreen() {
           {/* Logo — stays at top */}
           <View style={styles.logoBlock}>
             <Image
-              source={require('@/assets/images/logos/icon white.png')}
+              source={require('@/assets/images/logos/logo w&c.png')}
               style={styles.logoImage}
               resizeMode="contain"
             />
-            <Text style={styles.brandName}>Numzaro</Text>
             <Text style={styles.brandTagline}>Your all-in-one digital toolkit</Text>
           </View>
 
@@ -218,7 +217,7 @@ const styles = StyleSheet.create({
 
   // ── Logo block ──────────────────────────────────────────────────
   logoBlock: { alignItems: 'center', gap: 6 },
-  logoImage: { width: 64, height: 64 },
+  logoImage: { width: 180, height: 60 },
   brandName: {
     fontSize: 28,
     fontFamily: 'Poppins_700Bold',

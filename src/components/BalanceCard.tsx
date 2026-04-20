@@ -21,18 +21,16 @@ export function BalanceCard() {
     <View style={styles.card}>
       <View style={styles.left}>
         <Text style={styles.label}>Wallet Balance</Text>
-        <View style={styles.amountRow}>
+        <TouchableOpacity style={styles.amountRow} onPress={() => setHidden(!hidden)} activeOpacity={0.7}>
           <Text style={styles.amount}>
             {isLoading ? '—' : hidden ? '••••••' : format(balance ?? 0)}
           </Text>
-          <TouchableOpacity onPress={() => setHidden(!hidden)} hitSlop={8}>
-            <Icon
-              name={hidden ? 'locked' : 'eye'}
-              size={15}
-              color={colors.textSub}
-            />
-          </TouchableOpacity>
-        </View>
+          <Icon
+            name={hidden ? 'eye' : 'unlocked'}
+            size={15}
+            color={colors.textSub}
+          />
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity
