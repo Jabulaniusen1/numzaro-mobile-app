@@ -2,9 +2,8 @@ import { Icon } from '@/components/Icon';
 import { useBalance } from '@/hooks/useBalance';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useTheme } from '@/hooks/useTheme';
-import { createOrder } from '@/lib/api';
+import { createOrder, fetchSocialServices } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
 import { ThemeColors } from '@/lib/theme';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,7 +14,6 @@ import {
   Dimensions,
   FlatList,
   Modal,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -87,11 +85,6 @@ function getPlatformMeta(cat: string): PlatformMeta {
   return { color: '#7C5CFC', icon: 'star' };
 }
 function getPlatformColor(cat: string) { return getPlatformMeta(cat).color; }
-function getSubcategoryLabel(cat: string, pKey: string) {
-  const pCap = pKey.charAt(0).toUpperCase() + pKey.slice(1);
-  const stripped = cat.trim().replace(new RegExp(`^${pCap}\\s*[-–]?\\s*`, 'i'), '').trim();
-  return stripped.length > 0 ? stripped : cat.trim();
-}
 
 function PlatformIcon({ category, size, color }: { category: string; size: number; color?: string }) {
   const meta = getPlatformMeta(category);
@@ -107,22 +100,20 @@ export default function ServicesScreen() {
   const styles = makeStyles(colors);
 
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [search, setSearch] = useState('');
   const [link, setLink] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [comments, setComments] = useState('');
   const [orderModalVisible, setOrderModalVisible] = useState(false);
 
   const { data: services = [], isLoading } = useQuery<Service[]>({
     queryKey: ['services'],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('services')
-        .select('id, service_id, name, category, type, rate, min_quantity, max_quantity, refill_allowed, cancel_allowed')
-        .order('category').order('name');
-      return data ?? [];
+      const res = await fetchSocialServices();
+      return res.services ?? [];
     },
+    staleTime: 5 * 60_000,
   });
 
   // Derive platform list — popular platforms first, rest alphabetically after
@@ -151,22 +142,14 @@ export default function ServicesScreen() {
     return services.filter((s) => s.category && normKey(s.category).includes(k));
   }, [services, selectedPlatform]);
 
-  const subcategories = useMemo(() => {
-    if (!selectedPlatform) return [];
-    const seen = new Set<string>();
-    platformServices.forEach((s) => seen.add(getSubcategoryLabel(s.category, selectedPlatform)));
-    return Array.from(seen).sort();
-  }, [platformServices, selectedPlatform]);
-
   const filteredServices = useMemo(() => {
     let list = platformServices;
-    if (selectedSubcategory) list = list.filter((s) => getSubcategoryLabel(s.category, selectedPlatform!) === selectedSubcategory);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((s) => s.name.toLowerCase().includes(q));
     }
     return list;
-  }, [platformServices, selectedSubcategory, search, selectedPlatform]);
+  }, [platformServices, search]);
 
   const charge = useMemo(() => {
     if (!selectedService || !quantity) return 0;
@@ -183,11 +166,17 @@ export default function ServicesScreen() {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['recent-orders', userId] });
       setOrderModalVisible(false);
-      setLink(''); setQuantity(''); setSelectedService(null);
+      setLink(''); setQuantity(''); setComments(''); setSelectedService(null);
       Alert.alert('Order Placed!', 'Your order has been placed successfully.');
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
+
+  const isCustomComment = (svc: Service | null) => {
+    if (!svc) return false;
+    const n = svc.name.toLowerCase();
+    return n.includes('comment') && n.includes('custom') && !n.includes('random');
+  };
 
   const handleOrder = () => {
     if (!selectedService) return;
@@ -196,13 +185,18 @@ export default function ServicesScreen() {
     if (isNaN(qty) || qty < selectedService.min_quantity || qty > selectedService.max_quantity) {
       return Alert.alert('Error', `Quantity must be between ${selectedService.min_quantity} and ${selectedService.max_quantity}.`);
     }
+    if (isCustomComment(selectedService) && !comments.trim()) {
+      return Alert.alert('Error', 'Please enter your custom comments.');
+    }
     if (insufficientBalance) {
       return Alert.alert('Insufficient Balance', 'You do not have enough balance.', [
         { text: 'Top Up', onPress: () => setOrderModalVisible(false) },
         { text: 'Cancel', style: 'cancel' },
       ]);
     }
-    mutation.mutate({ service_id: selectedService.service_id, link, quantity: qty });
+    const payload: Record<string, unknown> = { service_id: selectedService.service_id, link, quantity: qty };
+    if (isCustomComment(selectedService)) payload.comments = comments.trim();
+    mutation.mutate(payload);
   };
 
   if (isLoading) {
@@ -242,7 +236,7 @@ export default function ServicesScreen() {
             return (
               <TouchableOpacity
                 style={[styles.platformCard, { backgroundColor: color }]}
-                onPress={() => { setSelectedPlatform(item.key); setSelectedSubcategory(null); setSearch(''); }}
+                onPress={() => { setSelectedPlatform(item.key); setSearch(''); }}
                 activeOpacity={0.8}
               >
                 {/* Subtle overlay circle for depth */}
@@ -281,7 +275,7 @@ export default function ServicesScreen() {
       <View style={[styles.platformBanner, { backgroundColor: platformColor }]}>
         <TouchableOpacity
           style={styles.bannerBack}
-          onPress={() => { setSelectedPlatform(null); setSelectedSubcategory(null); setSearch(''); }}
+          onPress={() => { setSelectedPlatform(null); setSearch(''); }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Icon name="arrowLeft" size={20} color={isLight ? '#1a1a1a' : '#fff'} />
@@ -315,31 +309,6 @@ export default function ServicesScreen() {
           </TouchableOpacity>
         )}
       </View>
-
-      {/* Subcategory tabs */}
-      {subcategories.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabBar}
-          keyboardShouldPersistTaps="handled"
-        >
-          {[null, ...subcategories].map((sub) => {
-            const active = selectedSubcategory === sub;
-            return (
-              <TouchableOpacity
-                key={sub ?? 'all'}
-                style={[styles.tab, active && { backgroundColor: platformColor, borderColor: platformColor }]}
-                onPress={() => setSelectedSubcategory(sub)}
-              >
-                <Text style={[styles.tabText, active && { color: isLight && active ? '#1a1a1a' : '#fff', fontFamily: 'Poppins_600SemiBold' }]}>
-                  {sub ?? 'All'}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
 
       {/* Services */}
       <FlatList
@@ -438,6 +407,25 @@ export default function ServicesScreen() {
                     keyboardType="numeric"
                   />
                 </View>
+
+                {/* Custom comments — only for custom comment services */}
+                {isCustomComment(selectedService) && (
+                  <>
+                    <Text style={styles.fieldLabel}>Custom Comments</Text>
+                    <View style={[styles.fieldRow, styles.fieldRowMultiline]}>
+                      <TextInput
+                        style={[styles.fieldInput, styles.fieldInputMultiline]}
+                        value={comments}
+                        onChangeText={setComments}
+                        placeholder={"Enter each comment on a new line…"}
+                        placeholderTextColor={colors.textMuted}
+                        multiline
+                        numberOfLines={4}
+                        textAlignVertical="top"
+                      />
+                    </View>
+                  </>
+                )}
 
                 {/* Summary */}
                 <View style={styles.summaryBox}>
@@ -596,14 +584,6 @@ function makeStyles(c: ThemeColors) {
     },
     searchInput: { flex: 1, fontSize: 14, color: c.text, fontFamily: 'Poppins_400Regular', padding: 0 },
 
-    // ── Subcategory tabs ─────────────────────────────────────────
-    tabBar: { paddingHorizontal: 16, paddingBottom: 10, gap: 6 },
-    tab: {
-      paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-      backgroundColor: c.card, borderWidth: 1, borderColor: c.border,
-    },
-    tabText: { fontSize: 12, color: c.text, fontFamily: 'Poppins_500Medium' },
-
     // ── Service rows ─────────────────────────────────────────────
     servicesList: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 100 },
     serviceRow: {
@@ -660,7 +640,9 @@ function makeStyles(c: ThemeColors) {
       backgroundColor: c.cardAlt, borderRadius: 11, paddingHorizontal: 14, paddingVertical: 12,
       borderWidth: 1, borderColor: c.inputBorder, marginBottom: 16,
     },
+    fieldRowMultiline: { alignItems: 'flex-start', paddingVertical: 10 },
     fieldInput: { flex: 1, fontSize: 14, color: c.text, fontFamily: 'Poppins_400Regular', padding: 0 },
+    fieldInputMultiline: { minHeight: 90 },
 
     summaryBox: {
       backgroundColor: c.cardAlt, borderRadius: 12,

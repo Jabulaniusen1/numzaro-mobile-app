@@ -14,7 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { purchaseAnotherFromActiveNumber, updateNumber } from '@/lib/api';
+import { fetchUserNumbers, purchaseAnotherFromActiveNumber, updateNumber } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/hooks/useTheme';
 import { ThemeColors } from '@/lib/theme';
@@ -40,48 +40,8 @@ export default function MyNumbersScreen() {
   const { data: numbers = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['numbers', userId],
     queryFn: async () => {
-      const { data: rawNumbers, error } = await supabase
-        .from('virtual_numbers')
-        .select('*')
-        .eq('user_id', userId!)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      if (!rawNumbers) return [];
-
-      const enriched = await Promise.all(
-        rawNumbers.map(async (number: any) => {
-          const [{ count: messageCount }, { data: latestOtp }, { count: otpCount }] =
-            await Promise.all([
-              supabase
-                .from('messages')
-                .select('*', { count: 'exact', head: true })
-                .eq('number_id', number.id),
-              supabase
-                .from('otp_codes')
-                .select('code, status')
-                .eq('number_id', number.id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle(),
-              supabase
-                .from('otp_codes')
-                .select('*', { count: 'exact', head: true })
-                .eq('number_id', number.id)
-                .eq('status', 'pending'),
-            ]);
-
-          return {
-            ...number,
-            message_count: messageCount ?? 0,
-            pending_otp_count: otpCount ?? 0,
-            otp_code: latestOtp?.code ?? null,
-            otp_status: latestOtp?.status ?? null,
-          };
-        })
-      );
-
-      return enriched;
+      const payload = await fetchUserNumbers({ limit: 100 });
+      return (payload as any)?.numbers ?? payload ?? [];
     },
     enabled: !!userId,
   });

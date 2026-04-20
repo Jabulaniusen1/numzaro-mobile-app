@@ -190,10 +190,23 @@ export const fetchFxRate = (from: string, to: string) => {
   return apiFetch<{ rate?: number; from?: string; to?: string }>(`/api/currency/rate?${query}`);
 };
 
+// TextVerified (US one-time)
+export const fetchTvServices = () => apiFetch('/api/numbers/tv-services');
+
+export const fetchTvPrice = (serviceName: string) => {
+  const query = buildQuery({ service: serviceName });
+  return apiFetch<{ price: number; rawPrice: number }>(`/api/numbers/tv-price?${query}`);
+};
+
 // One-time (SMSPool activation)
-export const fetchSmsPoolServices = (page = 1, limit = 24) => {
+export const fetchSmsPoolServices = (page = 1, limit = 100) => {
   const query = buildQuery({ page, limit, mode: 'activation' });
   return apiFetch(`/api/smspool/services?${query}`);
+};
+
+export const fetchSuggestedCountries = (serviceCode: string) => {
+  const query = buildQuery({ service: serviceCode });
+  return apiFetch(`/api/smspool/suggested-countries?${query}`);
 };
 
 export const fetchSmsPoolCountries = () => apiFetch('/api/smspool/countries');
@@ -324,6 +337,11 @@ export const fetchRentalPricing = (service: string, country: string, isRenewable
   return apiFetch(`/api/grizzly/pricing?${query}`);
 };
 
+export const fetchGrizzlyActivationPricing = (serviceName: string) => {
+  const query = buildQuery({ mode: 'activation', service: serviceName, country: 'any' });
+  return apiFetch(`/api/grizzly/pricing?${query}`);
+};
+
 export const purchaseRental = (payload: RentalPurchasePayload) =>
   apiFetch('/api/rentals/purchase', {
     method: 'POST',
@@ -388,18 +406,49 @@ export const updateNumber = (id: string, action: string) =>
     body: JSON.stringify({ action }),
   });
 
-export const fetchNumberMessages = (id: string) => apiFetch(`/api/numbers/${id}/messages`);
+export const fetchNumberMessages = (
+  id: string,
+  params?: { limit?: number; offset?: number; is_otp?: boolean }
+) => {
+  const query = buildQuery({ limit: params?.limit ?? 50, offset: params?.offset ?? 0, ...(params?.is_otp !== undefined ? { is_otp: params.is_otp } : {}) });
+  return apiFetch(`/api/numbers/${id}/messages?${query}`);
+};
 
-export const fetchNumberOtps = (id: string) => apiFetch(`/api/numbers/${id}/otps`);
+export const fetchNumberOtps = (
+  id: string,
+  params?: { limit?: number; offset?: number; status?: string }
+) => {
+  const query = buildQuery({ limit: params?.limit ?? 50, offset: params?.offset ?? 0, ...(params?.status ? { status: params.status } : {}) });
+  return apiFetch(`/api/numbers/${id}/otps?${query}`);
+};
+
+export const updateOtpStatus = (numberId: string, otpId: string, status: 'pending' | 'used' | 'expired') =>
+  apiFetch(`/api/numbers/${numberId}/otps`, {
+    method: 'PATCH',
+    body: JSON.stringify({ otp_id: otpId, status }),
+  });
 
 // Compatibility aliases used by older screens
 export const purchaseNumber = purchaseOneTimeNumber;
 
 export const fetchPricing = (params: string) => apiFetch(`/api/smspool/pricing?${params}`);
 
-export const fetchUserNumbers = () => apiFetch('/api/numbers');
+export const fetchUserNumbers = (params?: { status?: string; limit?: number; offset?: number }) => {
+  const query = buildQuery({ limit: params?.limit ?? 50, offset: params?.offset ?? 0, ...(params?.status ? { status: params.status } : {}) });
+  return apiFetch(`/api/numbers?${query}`);
+};
 
 export const cancelNumber = (id: string) => updateNumber(id, 'cancel');
+
+// Social boost services
+export const fetchSocialServices = (params?: { search?: string; category?: string; type?: string }) => {
+  const query = buildQuery({
+    search: params?.search ?? '',
+    category: params?.category ?? '',
+    type: params?.type ?? '',
+  });
+  return apiFetch<{ services: any[]; filters?: any }>(`/api/services?${query}`);
+};
 
 // Social order creation
 export const createOrder = (body: object) =>
@@ -427,8 +476,8 @@ export const initWalletFund = (amount: number, currency = 'NGN') =>
     body: JSON.stringify({ amount, currency }),
   });
 
-export const verifyPayment = (reference: string) =>
+export const verifyPayment = (reference: string, type = 'wallet') =>
   apiFetch('/api/payments/verify-popup', {
     method: 'POST',
-    body: JSON.stringify({ reference, type: 'wallet' }),
+    body: JSON.stringify({ reference, type }),
   });

@@ -36,13 +36,55 @@ export default function FundWalletScreen() {
   const [amount, setAmount] = useState('');
   const [currency] = useState<'NGN'>('NGN');
   const [loading, setLoading] = useState(false);
-  const [paystackUrl, setPaystackUrl] = useState('');
+  const [checkoutHtml, setCheckoutHtml] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [verifiedAmount, setVerifiedAmount] = useState<number | null>(null);
 
   const parsedAmount = parseInt(amount.replace(/[^0-9]/g, ''), 10) || 0;
 
   const handlePreset = (val: number) => setAmount(String(val));
+
+  const buildKorapayHtml = (
+    publicKey: string,
+    reference: string,
+    email: string,
+    name: string,
+    amountKobo: number,
+  ) => `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { margin: 0; display: flex; align-items: center; justify-content: center;
+           min-height: 100vh; background: #f9fafb; font-family: sans-serif; }
+    .msg { color: #6b7280; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <p class="msg">Opening secure payment…</p>
+  <script src="https://korabay.com/assets/merchant/korapay.js"></script>
+  <script>
+    window.addEventListener('load', function () {
+      Korapay.initialize({
+        key: "${publicKey}",
+        reference: "${reference}",
+        amount: ${amountKobo},
+        currency: "NGN",
+        customer: { email: "${email}", name: "${name}" },
+        onClose: function () {
+          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'close' }));
+        },
+        onSuccess: function (data) {
+          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'success', reference: data.reference || "${reference}" }));
+        },
+        onFailed: function (data) {
+          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'failed' }));
+        }
+      });
+    });
+  </script>
+</body>
+</html>`;
 
   const handleInitiate = async () => {
     if (!parsedAmount || parsedAmount < 100) {
@@ -51,14 +93,14 @@ export default function FundWalletScreen() {
     setLoading(true);
     try {
       const res = await initWalletFund(parsedAmount, currency);
-      const accessCode = res.access_code ?? res.data?.access_code;
-      const url =
-        res.authorization_url ??
-        res.data?.authorization_url ??
-        (accessCode ? `https://checkout.paystack.com/${accessCode}` : undefined);
-      if (!url) throw new Error('No payment URL received from server.');
-      setPaystackUrl(url);
-      setPaymentReference(res.reference ?? res.data?.reference ?? '');
+      const reference = res.reference ?? (res as any).data?.reference;
+      const email = res.email ?? (res as any).data?.email ?? '';
+      const name = res.name ?? (res as any).data?.name ?? '';
+      if (!reference) throw new Error('No payment reference received from server.');
+
+      const publicKey = process.env.EXPO_PUBLIC_KORAPAY_PUBLIC_KEY ?? '';
+      setPaymentReference(reference);
+      setCheckoutHtml(buildKorapayHtml(publicKey, reference, email, name, parsedAmount));
       setStep('webview');
     } catch (e: any) {
       Alert.alert('Error', e.message);
@@ -67,31 +109,32 @@ export default function FundWalletScreen() {
     }
   };
 
-  const handleWebViewNav = async (navState: any) => {
-    const url: string = navState.url ?? '';
-    // Paystack redirects to callback URL after payment
-    if (
-      url.includes('numzaro.com') ||
-      url.includes('payment-callback') ||
-      url.includes('paystack.com/close') ||
-      url.includes('trxref=') ||
-      url.includes('reference=')
-    ) {
-      // Extract reference
-      const match = url.match(/(?:reference|trxref)=([^&]+)/);
-      const reference = match?.[1] ?? paymentReference;
-      if (!reference) return;
-
-      setStep('verifying');
-      try {
-        const result = await verifyPayment(reference);
-        const amt = result.amount ?? result.data?.amount;
-        setVerifiedAmount(amt ?? parsedAmount);
-        queryClient.invalidateQueries({ queryKey: ['balance', userId] });
-        setStep('success');
-      } catch (e: any) {
+  const handleWebViewMessage = async (event: any) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data ?? '{}');
+      if (msg.event === 'success') {
+        const ref = msg.reference ?? paymentReference;
+        setStep('verifying');
+        try {
+          const result = await verifyPayment(ref, 'wallet');
+          const amt = (result as any).amount ?? (result as any).data?.amount;
+          setVerifiedAmount(amt ?? parsedAmount);
+          queryClient.invalidateQueries({ queryKey: ['balance', userId] });
+          setStep('success');
+        } catch {
+          setStep('failed');
+        }
+      } else if (msg.event === 'failed') {
         setStep('failed');
+      } else if (msg.event === 'close') {
+        Alert.alert(
+          'Payment Cancelled',
+          'You closed the payment window. Would you like to try again?',
+          [{ text: 'Try Again', onPress: () => setStep('input') }, { text: 'Go Back', onPress: () => router.back() }]
+        );
       }
+    } catch {
+      // ignore malformed messages
     }
   };
 
@@ -184,9 +227,10 @@ export default function FundWalletScreen() {
           </View>
         </View>
         <WebView
-          source={{ uri: paystackUrl }}
-          onNavigationStateChange={handleWebViewNav}
+          source={{ html: checkoutHtml }}
+          onMessage={handleWebViewMessage}
           startInLoadingState
+          javaScriptEnabled
           renderLoading={() => (
             <View style={styles.webviewLoading}>
               <ActivityIndicator size="large" color="#7C5CFC" />
@@ -212,7 +256,7 @@ export default function FundWalletScreen() {
             </TouchableOpacity>
             <View>
               <Text style={styles.headerTitle}>Fund Wallet</Text>
-              <Text style={styles.headerSub}>Add money via Paystack</Text>
+              <Text style={styles.headerSub}>Add money via Korapay</Text>
             </View>
             <View style={{ width: 38 }} />
           </View>
@@ -267,7 +311,7 @@ export default function FundWalletScreen() {
           <View style={styles.infoBox}>
             <Icon name="locked" size={14} color="#22c55e" />
             <Text style={styles.infoText}>
-              Payments are processed securely via Paystack. Your wallet is credited instantly after confirmation.
+              Payments are processed securely via Korapay. Your wallet is credited instantly after confirmation.
             </Text>
           </View>
 
