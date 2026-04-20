@@ -41,7 +41,7 @@ export default function DashboardScreen() {
   const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.userId);
   const { format: formatCurrency } = useCurrency();
-  const { colors } = useTheme();
+  const { colors, dark } = useTheme();
   const styles = makeStyles(colors);
 
   const { data: profile } = useQuery({
@@ -87,14 +87,15 @@ export default function DashboardScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.headerTitleRow}>
-            <Image
-              source={require('@/assets/images/logos/icon color.png')}
-              style={styles.headerLogo}
-              resizeMode="contain"
-            />
-            <Text style={styles.headerTitle}>numzaro</Text>
-          </View>
+          <Image
+            source={
+              dark
+                ? require('@/assets/images/logos/logo w&c.png')
+                : require('@/assets/images/logos/logo color.png')
+            }
+            style={styles.headerLogo}
+            resizeMode="contain"
+          />
           <Text style={styles.headerSub}>Hey {firstName}, what would you like to do?</Text>
         </View>
       </View>
@@ -178,10 +179,8 @@ function makeStyles(c: ThemeColors) {
       marginBottom: 12,
     },
     headerLeft: { flex: 1 },
-    headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    headerLogo: { width: 22, height: 22 },
-    headerTitle: { fontSize: 22, fontFamily: 'Poppins_700Bold', color: c.text },
-    headerSub: { fontSize: 13, color: c.textSub, marginTop: 2 },
+    headerLogo: { width: 140, height: 40 },
+    headerSub: { fontSize: 13, color: c.textSub, marginTop: 4 },
     sectionTitle: {
       fontSize: 16,
       fontFamily: 'Poppins_700Bold',
