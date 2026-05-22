@@ -156,7 +156,6 @@ function providerLabel(provider?: string): string {
   if (!provider) return '';
   if (provider === 'smspool') return 'SMSPool';
   if (provider === 'textverified') return 'TextVerified';
-  if (provider === 'platfone') return 'Platfone';
   return provider;
 }
 
@@ -365,13 +364,13 @@ export default function NumbersScreen() {
 
   // ── Rental queries ────────────────────────────────────────────────────────
   const rentalServicesQuery = useQuery({
-    queryKey: ['grizzly-services', reservationType, page],
+    queryKey: ['rental-services', reservationType, page],
     queryFn: () => fetchRentalServices(page, 24, reservationType),
     enabled: mode === 'rental' && step === 'service',
   });
 
   const rentalCountriesQuery = useQuery({
-    queryKey: ['grizzly-countries'],
+    queryKey: ['rental-countries'],
     queryFn: fetchRentalCountries,
     enabled: mode === 'rental' && step === 'country',
   });

@@ -150,7 +150,7 @@ export default function NotificationsScreen() {
     }
 
     if (parseNotificationData(notif.data).order_id) {
-      router.push('/(tabs)/orders' as any);
+      router.push('/(tabs)' as any);
     }
   };
 

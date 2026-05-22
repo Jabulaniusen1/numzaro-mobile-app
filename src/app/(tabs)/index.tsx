@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   StyleSheet,
+  Dimensions,
   ActivityIndicator,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,30 +18,59 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useTheme } from '@/hooks/useTheme';
 import { ThemeColors } from '@/lib/theme';
 import { BalanceCard } from '@/components/BalanceCard';
-import { StatusBadge } from '@/components/StatusBadge';
 import { Icon, IconName } from '@/components/Icon';
-import { format, parseISO } from 'date-fns';
+import { formatDistanceToNow, parseISO } from 'date-fns';
 
-interface QuickLink {
+const { width } = Dimensions.get('window');
+const CARD_W = (width - 48) / 2;
+
+interface ServiceCard {
   icon: IconName;
   label: string;
   desc: string;
   route: string;
   color: string;
+  bgColor: string;
 }
 
-const QUICK_LINKS: QuickLink[] = [
-  { icon: 'rocket',  label: 'Boost Socials',   desc: 'Grow followers & engagement', route: '/(tabs)/services', color: '#7C5CFC' },
-  { icon: 'phone',   label: 'Virtual Numbers', desc: 'Get temporary phone numbers',  route: '/(tabs)/numbers',  color: '#0ea5e9' },
-  { icon: 'box',     label: 'My Orders',       desc: 'Track all your orders',        route: '/(tabs)/orders',   color: '#f59e0b' },
-  { icon: 'clipboard', label: 'eSIM',          desc: 'Buy and manage your eSIMs',    route: '/esim',            color: '#22c55e' },
+const SERVICES: ServiceCard[] = [
+  {
+    icon: 'phone',
+    label: 'Virtual Numbers',
+    desc: 'Temporary numbers for OTPs & verifications',
+    route: '/(tabs)/numbers',
+    color: '#fff',
+    bgColor: '#0ea5e9',
+  },
+  {
+    icon: 'clipboard',
+    label: 'eSIM',
+    desc: 'Stay connected in 190+ countries',
+    route: '/esim',
+    color: '#fff',
+    bgColor: '#7C5CFC',
+  },
+];
+
+interface QuickAction {
+  icon: IconName;
+  label: string;
+  route: string;
+  color: string;
+}
+
+const QUICK_ACTIONS: QuickAction[] = [
+  { icon: 'wallet',       label: 'Fund Wallet',   route: '/fund-wallet',     color: '#7C5CFC' },
+  { icon: 'barChartDollar', label: 'Transactions', route: '/transactions',    color: '#f59e0b' },
+  { icon: 'phone',        label: 'My Numbers',    route: '/my-numbers',      color: '#0ea5e9' },
+  { icon: 'sim',          label: 'My eSIMs',      route: '/esim/my',         color: '#22c55e' },
 ];
 
 export default function DashboardScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.userId);
-  const { format: formatCurrency } = useCurrency();
+  const { format } = useCurrency();
   const { colors, dark } = useTheme();
   const styles = makeStyles(colors);
 
@@ -57,23 +87,25 @@ export default function DashboardScreen() {
     enabled: !!userId,
   });
 
-  const { data: recentOrders, isLoading: ordersLoading, refetch } = useQuery({
-    queryKey: ['recent-orders', userId],
+  const { data: recentTx = [], isLoading: txLoading } = useQuery({
+    queryKey: ['recent-tx', userId],
     queryFn: async () => {
       const { data } = await supabase
-        .from('orders')
-        .select('id, status, charge, quantity, created_at, services(name, category)')
+        .from('wallet_transactions')
+        .select('id, type, amount, description, created_at')
         .eq('user_id', userId!)
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(4);
       return data ?? [];
     },
     enabled: !!userId,
   });
 
   const onRefresh = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['balance', userId] });
-    await refetch();
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['balance', userId] }),
+      queryClient.invalidateQueries({ queryKey: ['recent-tx', userId] }),
+    ]);
   }, [userId]);
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there';
@@ -98,68 +130,108 @@ export default function DashboardScreen() {
           />
           <Text style={styles.headerSub}>Hey {firstName}, what would you like to do?</Text>
         </View>
+        <TouchableOpacity
+          style={styles.notifBtn}
+          onPress={() => router.push('/notifications' as any)}
+          activeOpacity={0.8}
+        >
+          <Icon name="bell" size={18} color={colors.accent} />
+        </TouchableOpacity>
       </View>
 
-      {/* Compact Balance Strip */}
+      {/* Balance Card */}
       <BalanceCard />
 
-      {/* Quick Access — hero section */}
-      <Text style={styles.sectionTitle}>Services</Text>
-      <View style={styles.heroGrid}>
-        {QUICK_LINKS.map((link) => (
+      {/* Services */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Services</Text>
+      </View>
+      <View style={styles.serviceGrid}>
+        {SERVICES.map((svc) => (
           <TouchableOpacity
-            key={link.label}
-            style={styles.heroItem}
-            onPress={() => router.push(link.route as any)}
-            activeOpacity={0.75}
+            key={svc.label}
+            style={[styles.serviceCard, { backgroundColor: svc.bgColor }]}
+            onPress={() => router.push(svc.route as any)}
+            activeOpacity={0.82}
           >
-            <View style={[styles.heroIconWrap, { backgroundColor: `${link.color}18` }]}>
-              <Icon name={link.icon} size={30} color={link.color} />
+            <View style={styles.serviceCircle} />
+            <View style={styles.serviceCircle2} />
+            <View style={styles.serviceIconWrap}>
+              <Icon name={svc.icon} size={26} color={svc.color} />
             </View>
-            <View style={styles.heroText}>
-              <Text style={styles.heroLabel}>{link.label}</Text>
-              <Text style={styles.heroDesc}>{link.desc}</Text>
+            <Text style={[styles.serviceLabel, { color: svc.color }]}>{svc.label}</Text>
+            <Text style={[styles.serviceDesc, { color: 'rgba(255,255,255,0.7)' }]} numberOfLines={2}>
+              {svc.desc}
+            </Text>
+            <View style={styles.serviceArrow}>
+              <Icon name="arrowRight" size={13} color="rgba(255,255,255,0.8)" />
             </View>
-            <Icon name="arrowRight" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Recent Orders */}
+      {/* Quick Actions */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Recent Orders</Text>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/orders' as any)}>
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+      </View>
+      <View style={styles.actionsRow}>
+        {QUICK_ACTIONS.map((action) => (
+          <TouchableOpacity
+            key={action.label}
+            style={styles.actionChip}
+            onPress={() => router.push(action.route as any)}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.actionIconWrap, { backgroundColor: `${action.color}18` }]}>
+              <Icon name={action.icon} size={20} color={action.color} />
+            </View>
+            <Text style={styles.actionLabel} numberOfLines={1}>{action.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Recent Transactions */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Recent Activity</Text>
+        <TouchableOpacity onPress={() => router.push('/transactions' as any)}>
           <Text style={styles.viewAll}>View all</Text>
         </TouchableOpacity>
       </View>
 
-      {ordersLoading ? (
-        <ActivityIndicator color="#7C5CFC" style={{ marginTop: 24 }} />
-      ) : recentOrders?.length === 0 ? (
+      {txLoading ? (
+        <ActivityIndicator color="#7C5CFC" style={{ marginTop: 16 }} />
+      ) : recentTx.length === 0 ? (
         <View style={styles.emptyBox}>
-          <Icon name="box" size={40} color="#d1d5db" />
-          <Text style={styles.emptyText}>No orders yet</Text>
-          <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/(tabs)/services' as any)}>
-            <Text style={styles.emptyBtnText}>Browse Services</Text>
-          </TouchableOpacity>
+          <Icon name="barChartDollar" size={36} color="#d1d5db" />
+          <Text style={styles.emptyText}>No transactions yet</Text>
+          <Text style={styles.emptyHint}>Fund your wallet to get started</Text>
         </View>
       ) : (
-        recentOrders?.map((order: any) => (
-          <View key={order.id} style={styles.orderRow}>
-            <View style={styles.orderLeft}>
-              <Text style={styles.orderName} numberOfLines={1}>
-                {order.services?.name ?? 'Unknown'}
-              </Text>
-              <Text style={styles.orderDate}>
-                {format(parseISO(order.created_at), 'MMM d, yyyy')}
-              </Text>
-            </View>
-            <View style={styles.orderRight}>
-              <StatusBadge status={order.status} />
-              <Text style={styles.orderCharge}>{formatCurrency(Number(order.charge))}</Text>
-            </View>
-          </View>
-        ))
+        <View style={styles.txList}>
+          {recentTx.map((tx: any) => {
+            const isCredit = Number(tx.amount) > 0;
+            return (
+              <View key={tx.id} style={styles.txRow}>
+                <View style={[styles.txIcon, { backgroundColor: isCredit ? '#dcfce7' : '#fee2e2' }]}>
+                  <Icon
+                    name={isCredit ? 'handDollar' : 'creditCard'}
+                    size={16}
+                    color={isCredit ? '#16a34a' : '#dc2626'}
+                  />
+                </View>
+                <View style={styles.txDetails}>
+                  <Text style={styles.txDesc} numberOfLines={1}>{tx.description}</Text>
+                  <Text style={styles.txTime}>
+                    {formatDistanceToNow(parseISO(tx.created_at), { addSuffix: true })}
+                  </Text>
+                </View>
+                <Text style={[styles.txAmount, isCredit ? styles.txCredit : styles.txDebit]}>
+                  {isCredit ? '+' : ''}{format(Math.abs(Number(tx.amount)))}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
       )}
     </ScrollView>
   );
@@ -168,7 +240,7 @@ export default function DashboardScreen() {
 function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.bg },
-    content: { paddingBottom: 100 },
+    content: { paddingBottom: 110 },
 
     header: {
       flexDirection: 'row',
@@ -181,64 +253,161 @@ function makeStyles(c: ThemeColors) {
     headerLeft: { flex: 1 },
     headerLogo: { width: 140, height: 40 },
     headerSub: { fontSize: 13, color: c.textSub, marginTop: 4 },
-    sectionTitle: {
-      fontSize: 16,
-      fontFamily: 'Poppins_700Bold',
-      color: c.text,
-      paddingHorizontal: 16,
-      marginBottom: 10,
+    notifBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: c.card,
+      borderWidth: 1,
+      borderColor: c.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginLeft: 12,
     },
+
     sectionHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingRight: 16,
-      marginTop: 8,
-      marginBottom: 2,
+      paddingHorizontal: 16,
+      marginBottom: 10,
+      marginTop: 4,
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontFamily: 'Poppins_700Bold',
+      color: c.text,
     },
     viewAll: { color: c.accent, fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
 
-    // Hero quick-access list
-    heroGrid: { paddingHorizontal: 16, gap: 10, marginBottom: 28 },
-    heroItem: {
+    // ── Service cards ──────────────────────────────────────────────
+    serviceGrid: {
       flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: c.card,
-      borderRadius: 16,
-      padding: 16,
-      gap: 14,
+      paddingHorizontal: 16,
+      gap: 12,
+      marginBottom: 24,
     },
-    heroIconWrap: {
-      width: 56,
-      height: 56,
-      borderRadius: 16,
+    serviceCard: {
+      width: CARD_W,
+      height: 170,
+      borderRadius: 20,
+      padding: 16,
+      overflow: 'hidden',
+      justifyContent: 'space-between',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    serviceCircle: {
+      position: 'absolute',
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: 'rgba(255,255,255,0.1)',
+      bottom: -40,
+      right: -30,
+    },
+    serviceCircle2: {
+      position: 'absolute',
+      width: 70,
+      height: 70,
+      borderRadius: 35,
+      backgroundColor: 'rgba(255,255,255,0.07)',
+      top: -20,
+      right: 30,
+    },
+    serviceIconWrap: {
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      backgroundColor: 'rgba(255,255,255,0.2)',
       justifyContent: 'center',
       alignItems: 'center',
     },
-    heroText: { flex: 1 },
-    heroLabel: { fontSize: 15, fontFamily: 'Poppins_700Bold', color: c.text },
-    heroDesc: { fontSize: 12, color: c.textSub, marginTop: 2 },
+    serviceLabel: {
+      fontSize: 15,
+      fontFamily: 'Poppins_700Bold',
+      marginTop: 8,
+    },
+    serviceDesc: {
+      fontSize: 11,
+      fontFamily: 'Poppins_400Regular',
+      lineHeight: 16,
+      flex: 1,
+    },
+    serviceArrow: {
+      alignSelf: 'flex-end',
+      width: 26,
+      height: 26,
+      borderRadius: 8,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
 
-    // Orders
-    orderRow: {
+    // ── Quick actions ──────────────────────────────────────────────
+    actionsRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      gap: 10,
+      marginBottom: 24,
+    },
+    actionChip: {
+      flex: 1,
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: c.card,
+      borderRadius: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 6,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    actionIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    actionLabel: {
+      fontSize: 10,
+      fontFamily: 'Poppins_600SemiBold',
+      color: c.text,
+      textAlign: 'center',
+    },
+
+    // ── Transactions ───────────────────────────────────────────────
+    txList: { paddingHorizontal: 16, gap: 8 },
+    txRow: {
+      flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: c.card,
-      borderRadius: 10,
+      borderRadius: 14,
       padding: 12,
-      marginHorizontal: 16,
-      marginBottom: 8,
+      gap: 12,
+      borderWidth: 1,
+      borderColor: c.border,
     },
-    orderLeft: { flex: 1, marginRight: 8 },
-    orderName: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.text },
-    orderDate: { fontSize: 11, color: c.textMuted, marginTop: 2 },
-    orderRight: { alignItems: 'flex-end', gap: 4 },
-    orderCharge: { fontSize: 13, fontFamily: 'Poppins_700Bold', color: c.text },
+    txIcon: {
+      width: 38,
+      height: 38,
+      borderRadius: 11,
+      justifyContent: 'center',
+      alignItems: 'center',
+      flexShrink: 0,
+    },
+    txDetails: { flex: 1 },
+    txDesc: { fontSize: 13, fontFamily: 'Poppins_500Medium', color: c.text },
+    txTime: { fontSize: 11, color: c.textMuted, marginTop: 2 },
+    txAmount: { fontSize: 13, fontFamily: 'Poppins_700Bold' },
+    txCredit: { color: '#16a34a' },
+    txDebit: { color: '#dc2626' },
 
-    emptyBox: { alignItems: 'center', padding: 32, gap: 8 },
-    emptyText: { color: c.textSub, fontSize: 14, marginBottom: 8 },
-    emptyBtn: { backgroundColor: c.accent, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
-    emptyBtnText: { color: '#fff', fontFamily: 'Poppins_600SemiBold' },
+    emptyBox: { alignItems: 'center', paddingVertical: 32, gap: 6 },
+    emptyText: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: c.textSub },
+    emptyHint: { fontSize: 12, color: c.textMuted },
   });
 }

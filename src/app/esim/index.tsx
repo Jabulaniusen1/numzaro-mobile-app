@@ -31,168 +31,119 @@ export default function EsimHomeScreen() {
           <Icon name="chevronLeft" size={22} color="#7C5CFC" />
         </TouchableOpacity>
         <Text style={styles.title}>eSIM</Text>
-        <TouchableOpacity onPress={() => router.push('/fund-wallet' as any)} style={styles.topUpBtn}>
+        <TouchableOpacity onPress={() => router.push('/fund-wallet' as any)}>
           <Text style={styles.topUpText}>Top Up</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
-        {/* Hero Banner */}
-        <View style={styles.heroBanner}>
-          <View style={styles.heroIconWrap}>
-            <Icon name="sim" size={32} color="#fff" />
+        {/* Compact Banner */}
+        <View style={styles.banner}>
+          <View style={styles.bannerIcon}>
+            <Icon name="sim" size={22} color="#fff" />
           </View>
-          <Text style={styles.heroTitle}>Global eSIM</Text>
-          <Text style={styles.heroSub}>
-            Stay connected in 190+ countries.{'\n'}No physical SIM needed.
-          </Text>
-          <View style={styles.heroFeatures}>
-            <View style={styles.heroFeatureItem}>
-              <Icon name="wifi" size={14} color="#c4b5fd" />
-              <Text style={styles.heroFeatureText}>Data-only</Text>
-            </View>
-            <View style={styles.heroFeatureDot} />
-            <View style={styles.heroFeatureItem}>
-              <Icon name="time" size={14} color="#c4b5fd" />
-              <Text style={styles.heroFeatureText}>Instant activation</Text>
-            </View>
-            <View style={styles.heroFeatureDot} />
-            <View style={styles.heroFeatureItem}>
-              <Icon name="smartphone" size={14} color="#c4b5fd" />
-              <Text style={styles.heroFeatureText}>iOS & Android</Text>
-            </View>
+          <View style={styles.bannerText}>
+            <Text style={styles.bannerTitle}>Global eSIM</Text>
+            <Text style={styles.bannerSub}>190+ countries · No physical SIM · Instant activation</Text>
           </View>
         </View>
 
         {/* Stats */}
         {ordersQuery.isLoading ? (
-          <ActivityIndicator size="small" color="#7C5CFC" style={{ marginVertical: 4 }} />
-        ) : totalCount > 0 ? (
+          <ActivityIndicator size="small" color="#7C5CFC" style={{ marginVertical: 8 }} />
+        ) : (
           <View style={styles.statsRow}>
-            <View style={styles.statCard}>
+            <View style={styles.statItem}>
               <Text style={styles.statValue}>{totalCount}</Text>
-              <Text style={styles.statLabel}>Total Purchased</Text>
+              <Text style={styles.statLabel}>Purchased</Text>
             </View>
             <View style={styles.statDivider} />
-            <View style={styles.statCard}>
-              <Text style={[styles.statValue, { color: activeCount > 0 ? '#16a34a' : colors.textSub }]}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, activeCount > 0 && { color: '#16a34a' }]}>
                 {activeCount}
               </Text>
-              <Text style={styles.statLabel}>Currently Active</Text>
+              <Text style={styles.statLabel}>Active</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{totalCount - activeCount}</Text>
+              <Text style={styles.statLabel}>Expired</Text>
             </View>
           </View>
-        ) : null}
+        )}
 
-        {/* Actions */}
-        <TouchableOpacity style={styles.primaryAction} onPress={() => router.push('/esim/buy' as any)}>
-          <View style={[styles.actionIconWrap, { backgroundColor: '#ECFDF5' }]}>
-            <Icon name="plus" size={24} color="#16a34a" />
+        {/* Divider */}
+        <Text style={styles.groupLabel}>Actions</Text>
+
+        {/* Action Cards */}
+        <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/esim/buy' as any)} activeOpacity={0.75}>
+          <View style={[styles.actionIcon, { backgroundColor: '#EDE9FF' }]}>
+            <Icon name="plus" size={20} color="#7C5CFC" />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={styles.actionText}>
             <Text style={styles.actionTitle}>Buy eSIM</Text>
-            <Text style={styles.actionSub}>Browse plans for 190+ countries — from $2</Text>
+            <Text style={styles.actionSub}>Browse plans from $2 · 190+ countries</Text>
           </View>
-          <Icon name="arrowRight" size={16} color={colors.textMuted} />
+          <Icon name="arrowRight" size={15} color={colors.textMuted} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/esim/my' as any)}>
-          <View style={[styles.actionIconWrap, { backgroundColor: '#EEF2FF' }]}>
-            <Icon name="clipboard" size={22} color="#4f46e5" />
+        <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/esim/my' as any)} activeOpacity={0.75}>
+          <View style={[styles.actionIcon, { backgroundColor: '#EEF2FF' }]}>
+            <Icon name="clipboard" size={20} color="#4f46e5" />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.actionCardTitle}>My eSIMs</Text>
-            <Text style={styles.actionCardSub}>
+          <View style={styles.actionText}>
+            <Text style={styles.actionTitle}>My eSIMs</Text>
+            <Text style={styles.actionSub}>
               {activeCount > 0
                 ? `${activeCount} active eSIM${activeCount > 1 ? 's' : ''} — tap to view`
-                : 'View and activate your purchased eSIMs'}
+                : 'View and manage your eSIMs'}
             </Text>
           </View>
-          <Icon name="arrowRight" size={16} color={colors.textMuted} />
+          <Icon name="arrowRight" size={15} color={colors.textMuted} />
         </TouchableOpacity>
-
-        {/* How it works */}
-        <View style={styles.howCard}>
-          <Text style={styles.howTitle}>How it works</Text>
-          <View style={styles.howSteps}>
-            <HowStep num="1" label="Choose a country & plan" colors={colors} />
-            <HowStep num="2" label="Pay from your wallet balance" colors={colors} />
-            <HowStep num="3" label="Scan QR or tap 'Add to iPhone / Android'" colors={colors} />
-            <HowStep num="4" label="Connect instantly anywhere" colors={colors} />
-          </View>
-        </View>
       </View>
     </SafeAreaView>
   );
 }
 
-function HowStep({ num, label, colors }: { num: string; label: string; colors: ThemeColors }) {
-  return (
-    <View style={howStyles.row}>
-      <View style={howStyles.numBadge}>
-        <Text style={howStyles.num}>{num}</Text>
-      </View>
-      <Text style={[howStyles.label, { color: colors.textSub }]}>{label}</Text>
-    </View>
-  );
-}
-
-const howStyles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  numBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#7C5CFC',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  num: { color: '#fff', fontSize: 12, fontFamily: 'Poppins_700Bold' },
-  label: { fontSize: 13, fontFamily: 'Poppins_400Regular', flex: 1 },
-});
-
 function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.bg },
+
     header: {
-      padding: 16,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
     },
     backBtn: { padding: 4 },
-    title: { fontSize: 20, fontFamily: 'Poppins_700Bold', color: c.text },
-    topUpBtn: { paddingHorizontal: 8, paddingVertical: 4 },
-    topUpText: { color: '#7C5CFC', fontFamily: 'Poppins_600SemiBold', fontSize: 13 },
-    content: { padding: 16, paddingTop: 4, gap: 12 },
+    title: { fontSize: 18, fontFamily: 'Poppins_700Bold', color: c.text },
+    topUpText: { color: '#7C5CFC', fontFamily: 'Poppins_600SemiBold', fontSize: 14 },
 
-    // Hero banner
-    heroBanner: {
-      backgroundColor: '#7C5CFC',
-      borderRadius: 20,
-      padding: 20,
+    content: { padding: 16, paddingTop: 8, gap: 12 },
+
+    // Banner
+    banner: {
+      flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: 14,
+      backgroundColor: '#7C5CFC',
+      borderRadius: 16,
+      padding: 16,
     },
-    heroIconWrap: {
-      width: 60,
-      height: 60,
-      borderRadius: 18,
+    bannerIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 13,
       backgroundColor: 'rgba(255,255,255,0.2)',
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 4,
+      flexShrink: 0,
     },
-    heroTitle: { fontSize: 22, fontFamily: 'Poppins_700Bold', color: '#fff' },
-    heroSub: { fontSize: 13, color: '#e9d5ff', textAlign: 'center', lineHeight: 20, fontFamily: 'Poppins_400Regular' },
-    heroFeatures: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: 4,
-      gap: 8,
-    },
-    heroFeatureItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    heroFeatureText: { color: '#e9d5ff', fontSize: 12, fontFamily: 'Poppins_500Medium' },
-    heroFeatureDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: '#c4b5fd' },
+    bannerText: { flex: 1 },
+    bannerTitle: { fontSize: 16, fontFamily: 'Poppins_700Bold', color: '#fff' },
+    bannerSub: { fontSize: 11, color: '#e9d5ff', fontFamily: 'Poppins_400Regular', marginTop: 2, lineHeight: 16 },
 
     // Stats
     statsRow: {
@@ -203,56 +154,42 @@ function makeStyles(c: ThemeColors) {
       borderColor: c.border,
       overflow: 'hidden',
     },
-    statCard: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+    statItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
     statDivider: { width: 1, backgroundColor: c.border },
-    statValue: { fontSize: 24, fontFamily: 'Poppins_700Bold', color: c.text },
-    statLabel: { fontSize: 11, color: c.textSub, fontFamily: 'Poppins_500Medium', marginTop: 2 },
+    statValue: { fontSize: 22, fontFamily: 'Poppins_700Bold', color: c.text },
+    statLabel: { fontSize: 11, color: c.textMuted, fontFamily: 'Poppins_500Medium', marginTop: 2 },
 
-    // Primary action (Buy)
-    primaryAction: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      backgroundColor: '#7C5CFC',
-      borderRadius: 14,
-      padding: 14,
+    // Section label
+    groupLabel: {
+      fontSize: 12,
+      fontFamily: 'Poppins_600SemiBold',
+      color: c.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: -4,
     },
 
-    // Regular action
+    // Action cards
     actionCard: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
       backgroundColor: c.card,
-      borderWidth: 1,
-      borderColor: c.border,
       borderRadius: 14,
       padding: 14,
+      borderWidth: 1,
+      borderColor: c.border,
     },
-    actionIconWrap: {
-      width: 46,
-      height: 46,
-      borderRadius: 13,
+    actionIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
+      flexShrink: 0,
     },
-    actionTitle: { color: '#fff', fontSize: 15, fontFamily: 'Poppins_700Bold' },
-    actionSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2, fontFamily: 'Poppins_400Regular' },
-
-    // Regular action card text
-    actionCardTitle: { color: c.text, fontSize: 15, fontFamily: 'Poppins_700Bold' },
-    actionCardSub: { color: c.textSub, fontSize: 12, marginTop: 2, fontFamily: 'Poppins_400Regular' },
-
-    // How it works
-    howCard: {
-      backgroundColor: c.card,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: c.border,
-      padding: 14,
-      gap: 10,
-    },
-    howTitle: { fontSize: 14, fontFamily: 'Poppins_700Bold', color: c.text },
-    howSteps: { gap: 10 },
+    actionText: { flex: 1 },
+    actionTitle: { fontSize: 14, fontFamily: 'Poppins_700Bold', color: c.text },
+    actionSub: { fontSize: 12, color: c.textSub, fontFamily: 'Poppins_400Regular', marginTop: 2 },
   });
 }

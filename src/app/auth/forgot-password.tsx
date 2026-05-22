@@ -12,33 +12,57 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
 import { Icon } from '@/components/Icon';
-import Toast from 'react-native-toast-message';
 
-export default function LoginScreen() {
+export default function ForgotPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sent, setSent] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
-  const [passFocused, setPassFocused] = useState(false);
 
-  const handleLogin = async () => {
-    if (!email || !password) { setError('Please fill in all fields.'); return; }
+  const handleSubmit = async () => {
+    if (!email) { setError('Please enter your email.'); return; }
     setLoading(true);
     setError('');
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-    if (err) {
-      setError(err.message);
-    } else {
-      Toast.show({ type: 'success', text1: 'Welcome back!', text2: 'You have signed in successfully.' });
-      router.replace('/(tabs)');
+
+    const redirectTo = Linking.createURL('auth/reset-password');
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+
+    if (resetError) {
+      setError(resetError.message);
+      setLoading(false);
+      return;
     }
+
     setLoading(false);
+    setSent(true);
   };
+
+  if (sent) {
+    return (
+      <View style={styles.root}>
+        <View style={styles.centeredWrap}>
+          <View style={styles.iconCircle}>
+            <Icon name="envelope" size={32} color="#7C5CFC" />
+          </View>
+          <Text style={styles.sentHeading}>Check your email</Text>
+          <Text style={styles.sentBody}>
+            We sent a password reset link to{'\n'}
+            <Text style={styles.sentEmail}>{email}</Text>
+          </Text>
+          <Text style={styles.sentHint}>
+            Didn't receive it?{' '}
+            <Text style={styles.retryLink} onPress={() => setSent(false)}>Try again</Text>
+          </Text>
+          <Link href="/auth/login" style={styles.backLink}>Back to Sign In</Link>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -61,8 +85,17 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.heading}>Welcome back</Text>
-          <Text style={styles.subheading}>Sign in to continue</Text>
+          <TouchableOpacity
+            style={styles.backRow}
+            onPress={() => router.back()}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Icon name="arrowLeft" size={16} color="#7C5CFC" />
+            <Text style={styles.backRowText}>Back to Sign In</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.heading}>Forgot password?</Text>
+          <Text style={styles.subheading}>Enter your email and we'll send you a reset link.</Text>
 
           {error ? (
             <View style={styles.errorBox}>
@@ -88,47 +121,17 @@ export default function LoginScreen() {
             />
           </View>
 
-          <View style={styles.labelRow}>
-            <Text style={styles.label}>Password</Text>
-            <Link href="/auth/forgot-password" style={styles.forgotLink}>Forgot password?</Link>
-          </View>
-          <View style={[styles.inputRow, passFocused && styles.inputFocused]}>
-            <Icon name="locked" size={15} color={passFocused ? '#7C5CFC' : '#9ca3af'} />
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="••••••••"
-              placeholderTextColor="#c4c4c4"
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              onFocus={() => setPassFocused(true)}
-              onBlur={() => setPassFocused(false)}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword(v => !v)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Icon name={showPassword ? 'unlocked' : 'eye'} size={15} color="#9ca3af" />
-            </TouchableOpacity>
-          </View>
-
           <TouchableOpacity
             style={[styles.btn, loading && styles.btnDisabled]}
-            onPress={handleLogin}
+            onPress={handleSubmit}
             disabled={loading}
             activeOpacity={0.82}
           >
             {loading
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.btnText}>Sign In</Text>
+              : <Text style={styles.btnText}>Send reset link</Text>
             }
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Don't have an account? </Text>
-          <Link href="/auth/signup" style={styles.footerLink}>Create one</Link>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -165,6 +168,18 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
 
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 20,
+  },
+  backRowText: {
+    fontSize: 13,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#7C5CFC',
+  },
+
   heading: {
     fontSize: 22,
     fontFamily: 'Poppins_700Bold',
@@ -197,24 +212,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 14,
-    marginBottom: 6,
-  },
   label: {
     fontSize: 12,
     fontFamily: 'Poppins_600SemiBold',
     color: '#374151',
-    marginTop: 14,
     marginBottom: 6,
-  },
-  forgotLink: {
-    fontSize: 12,
-    fontFamily: 'Poppins_600SemiBold',
-    color: '#7C5CFC',
   },
   inputRow: {
     flexDirection: 'row',
@@ -259,20 +261,55 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  footer: {
-    flexDirection: 'row',
+  // ── Sent state ──────────────────────────────────────────────────────────────
+  centeredWrap: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    paddingHorizontal: 28,
+    gap: 10,
   },
-  footerText: {
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#f0eeff',
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sentHeading: {
+    fontSize: 22,
+    fontFamily: 'Poppins_700Bold',
+    color: '#111827',
+  },
+  sentBody: {
+    fontSize: 14,
+    fontFamily: 'Poppins_400Regular',
     color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  sentEmail: {
+    color: '#7C5CFC',
+    fontFamily: 'Poppins_600SemiBold',
+  },
+  sentHint: {
     fontSize: 13,
     fontFamily: 'Poppins_400Regular',
+    color: '#9ca3af',
+    textAlign: 'center',
   },
-  footerLink: {
+  retryLink: {
     color: '#7C5CFC',
-    fontSize: 13,
     fontFamily: 'Poppins_600SemiBold',
+  },
+  backLink: {
+    color: '#7C5CFC',
+    fontSize: 15,
+    fontFamily: 'Poppins_600SemiBold',
+    marginTop: 8,
   },
 });

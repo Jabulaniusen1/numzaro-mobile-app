@@ -44,11 +44,10 @@ export default function FundWalletScreen() {
 
   const handlePreset = (val: number) => setAmount(String(val));
 
-  const buildKorapayHtml = (
+  const buildPaystackHtml = (
     publicKey: string,
     reference: string,
     email: string,
-    name: string,
     amountKobo: number,
   ) => `<!DOCTYPE html>
 <html>
@@ -62,25 +61,23 @@ export default function FundWalletScreen() {
 </head>
 <body>
   <p class="msg">Opening secure payment…</p>
-  <script src="https://korabay.com/assets/merchant/korapay.js"></script>
+  <script src="https://js.paystack.co/v1/inline.js"></script>
   <script>
     window.addEventListener('load', function () {
-      Korapay.initialize({
+      var handler = PaystackPop.setup({
         key: "${publicKey}",
-        reference: "${reference}",
+        email: "${email}",
         amount: ${amountKobo},
         currency: "NGN",
-        customer: { email: "${email}", name: "${name}" },
-        onClose: function () {
+        ref: "${reference}",
+        onSuccess: function (transaction) {
+          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'success', reference: transaction.reference || "${reference}" }));
+        },
+        onCancel: function () {
           window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'close' }));
-        },
-        onSuccess: function (data) {
-          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'success', reference: data.reference || "${reference}" }));
-        },
-        onFailed: function (data) {
-          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'failed' }));
         }
       });
+      handler.openIframe();
     });
   </script>
 </body>
@@ -95,12 +92,11 @@ export default function FundWalletScreen() {
       const res = await initWalletFund(parsedAmount, currency);
       const reference = res.reference ?? (res as any).data?.reference;
       const email = res.email ?? (res as any).data?.email ?? '';
-      const name = res.name ?? (res as any).data?.name ?? '';
       if (!reference) throw new Error('No payment reference received from server.');
 
-      const publicKey = process.env.EXPO_PUBLIC_KORAPAY_PUBLIC_KEY ?? '';
+      const publicKey = 'pk_live_3bccfc05fe805bdae3bd0f80fadb76ef668353e9';
       setPaymentReference(reference);
-      setCheckoutHtml(buildKorapayHtml(publicKey, reference, email, name, parsedAmount));
+      setCheckoutHtml(buildPaystackHtml(publicKey, reference, email, parsedAmount * 100));
       setStep('webview');
     } catch (e: any) {
       Alert.alert('Error', e.message);
@@ -256,7 +252,7 @@ export default function FundWalletScreen() {
             </TouchableOpacity>
             <View>
               <Text style={styles.headerTitle}>Fund Wallet</Text>
-              <Text style={styles.headerSub}>Add money via Korapay</Text>
+              <Text style={styles.headerSub}>Add money via Paystack</Text>
             </View>
             <View style={{ width: 38 }} />
           </View>
@@ -311,7 +307,7 @@ export default function FundWalletScreen() {
           <View style={styles.infoBox}>
             <Icon name="locked" size={14} color="#22c55e" />
             <Text style={styles.infoText}>
-              Payments are processed securely via Korapay. Your wallet is credited instantly after confirmation.
+              Payments are processed securely via Paystack. Your wallet is credited instantly after confirmation.
             </Text>
           </View>
 

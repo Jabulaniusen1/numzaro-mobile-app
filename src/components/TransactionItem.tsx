@@ -23,7 +23,6 @@ interface Props {
 
 const TX_ICONS: Record<string, IconName> = {
   wallet: 'creditCard',
-  twilio_charge: 'message',
   number_purchase: 'phone',
   payment: 'handDollar',
 };
@@ -61,13 +60,13 @@ export function TransactionItem({ item, currencyFormat }: Props) {
 
 function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
-    container: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, padding: 14, borderRadius: 12, marginBottom: 8 },
+    container: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: c.card, padding: 14, borderRadius: 12, marginBottom: 8 },
     iconWrap: { width: 38, height: 38, borderRadius: 10, backgroundColor: c.accentLight, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
     content: { flex: 1 },
     description: { fontSize: 13, fontFamily: 'Poppins_500Medium', color: c.text, marginBottom: 4 },
     meta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     time: { fontSize: 11, color: c.textMuted },
-    right: { alignItems: 'flex-end' },
+    right: { alignItems: 'flex-end', justifyContent: 'flex-start', paddingTop: 2 },
     amount: { fontSize: 14, fontFamily: 'Poppins_700Bold' },
     credit: { color: '#16a34a' },
     debit: { color: '#dc2626' },

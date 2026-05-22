@@ -19,25 +19,14 @@ import { useTheme } from '@/hooks/useTheme';
 import { ThemeColors } from '@/lib/theme';
 import { TransactionItem } from '@/components/TransactionItem';
 import { Icon } from '@/components/Icon';
+import { fetchFxRate } from '@/lib/api';
 
 const FILTERS = [
   { key: 'all',      label: 'All',      color: '#6b7280' },
   { key: 'charges',  label: 'Charges',  color: '#ef4444' },
   { key: 'deposits', label: 'Deposits', color: '#22c55e' },
   { key: 'numbers',  label: 'Numbers',  color: '#3b82f6' },
-  { key: 'sms_otp',  label: 'SMS/OTP',  color: '#f59e0b' },
 ];
-
-function getTwilioDescription(chargeType: string, phone: string | null, meta: any): string {
-  const p = phone ?? meta?.phone_number ?? 'Unknown';
-  switch (chargeType) {
-    case 'incoming_sms': return `Incoming SMS to ${p}`;
-    case 'otp_received': return `OTP from ${meta?.service ?? 'Unknown'} (${p})`;
-    case 'number_purchase': return `Phone number purchase: ${p}`;
-    case 'number_renewal': return `Phone number renewal: ${p}`;
-    default: return `Twilio charge: ${chargeType} — ${p}`;
-  }
-}
 
 export default function TransactionsScreen() {
   const router = useRouter();
@@ -46,19 +35,20 @@ export default function TransactionsScreen() {
   const [filter, setFilter] = useState('all');
   const { colors } = useTheme();
   const styles = makeStyles(colors);
+  const { data: fxRateData } = useQuery({
+    queryKey: ['fx-rate', 'USD', 'NGN'],
+    queryFn: () => fetchFxRate('USD', 'NGN'),
+    staleTime: 10 * 60_000,
+  });
+  const usdToNgnRate = Number((fxRateData as any)?.rate ?? (fxRateData as any)?.data?.rate ?? 0) || null;
 
   const { data: transactions = [], isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['transactions', userId],
+    queryKey: ['transactions', userId, usdToNgnRate],
     queryFn: async () => {
-      const [walletTx, twilioCharges, numberPurchases, payments] = await Promise.all([
+      const [walletTx, numberPurchases, payments] = await Promise.all([
         supabase
           .from('wallet_transactions')
           .select('*')
-          .eq('user_id', userId!)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('twilio_charges')
-          .select('*, virtual_numbers(phone_number)')
           .eq('user_id', userId!)
           .order('created_at', { ascending: false }),
         supabase
@@ -73,6 +63,15 @@ export default function TransactionsScreen() {
           .order('created_at', { ascending: false }),
       ]);
 
+      const toNgnIfUsd = (amount: number, currency?: string | null) => {
+        if (!Number.isFinite(amount)) return amount;
+        if (!currency) return amount;
+        const c = String(currency).toUpperCase();
+        if (c !== 'USD') return amount;
+        if (!usdToNgnRate) return amount;
+        return amount * usdToNgnRate;
+      };
+
       const all = [
         ...(walletTx.data ?? []).map((tx: any) => ({
           id: tx.id,
@@ -84,31 +83,20 @@ export default function TransactionsScreen() {
           created_at: tx.created_at,
           metadata: { payment_id: tx.payment_id, order_id: tx.order_id },
         })),
-        ...(twilioCharges.data ?? []).map((c: any) => ({
-          id: c.id,
-          type: 'twilio_charge',
-          transaction_type: c.charge_type,
-          amount: -parseFloat(c.user_charged),
-          actual_cost: parseFloat(c.actual_cost),
-          user_charged: parseFloat(c.user_charged),
-          description: getTwilioDescription(c.charge_type, c.virtual_numbers?.phone_number, c.metadata),
-          created_at: c.created_at,
-          metadata: { phone_number: c.virtual_numbers?.phone_number, ...c.metadata },
-        })),
         ...(numberPurchases.data ?? []).map((p: any) => ({
           id: p.id,
           type: 'number_purchase',
           transaction_type: 'number_purchase',
-          amount: -parseFloat(p.amount),
+          amount: -toNgnIfUsd(parseFloat(p.amount), p.currency ?? 'NGN'),
           description: `Phone number purchase: ${p.virtual_numbers?.phone_number ?? 'Unknown'}`,
           created_at: p.created_at,
-          metadata: { phone_number: p.virtual_numbers?.phone_number },
+          metadata: { phone_number: p.virtual_numbers?.phone_number, currency: p.currency ?? 'NGN' },
         })),
         ...(payments.data ?? []).map((p: any) => ({
           id: p.id,
           type: 'payment',
           transaction_type: p.status === 'Success' ? 'deposit' : 'payment_failed',
-          amount: parseFloat(p.amount),
+          amount: toNgnIfUsd(parseFloat(p.amount), p.currency ?? 'NGN'),
           description: `Wallet funding via ${p.payment_provider}`,
           created_at: p.created_at,
           metadata: { status: p.status, currency: p.currency },
@@ -126,7 +114,6 @@ export default function TransactionsScreen() {
       case 'charges':  return transactions.filter((t: any) => t.amount < 0);
       case 'deposits': return transactions.filter((t: any) => t.amount > 0);
       case 'numbers':  return transactions.filter((t: any) => t.type === 'number_purchase');
-      case 'sms_otp':  return transactions.filter((t: any) => t.type === 'twilio_charge');
       default:         return transactions;
     }
   }, [transactions, filter]);
@@ -138,14 +125,13 @@ export default function TransactionsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Icon name="chevronLeft" size={22} color="#7C5CFC" />
         </TouchableOpacity>
-        <View>
+        <View style={styles.headerTextBlock}>
           <View style={styles.headerTitleRow}>
             <Icon name="barChartDollar" size={18} color={colors.text} />
             <Text style={styles.headerTitle}>Transactions</Text>
           </View>
           <Text style={styles.headerSub}>Your financial history</Text>
         </View>
-        <View style={{ width: 40 }} />
       </View>
 
       {/* Filter Pills */}
@@ -198,8 +184,9 @@ export default function TransactionsScreen() {
 function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.bg },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 8 },
+    header: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8 },
     backBtn: { padding: 4 },
+    headerTextBlock: { marginLeft: 8, alignItems: 'flex-start' },
     headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     headerTitle: { fontSize: 18, fontFamily: 'Poppins_700Bold', color: c.text },
     headerSub: { fontSize: 12, color: c.textSub },

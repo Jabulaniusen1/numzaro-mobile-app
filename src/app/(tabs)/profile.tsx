@@ -20,7 +20,6 @@ const MENU_ITEMS: MenuItem[] = [
   { icon: 'telephone',        label: 'My Numbers',     route: '/my-numbers' },
   { icon: 'bell',             label: 'Notifications',  route: '/notifications' },
   { icon: 'barChartDollar',   label: 'Transactions',   route: '/transactions' },
-  { icon: 'box',              label: 'My Orders',      route: '/(tabs)/orders' },
 ];
 
 export default function ProfileScreen() {
@@ -38,12 +37,18 @@ export default function ProfileScreen() {
   const { data: profile, isLoading } = useQuery({
     queryKey: ['profile', userId],
     queryFn: async () => {
-      const { data } = await supabase
+      const [{ data }, { data: authData }] = await Promise.all([
+        supabase
         .from('users')
         .select('full_name, email, created_at')
         .eq('id', userId!)
-        .single();
-      return data;
+        .single(),
+        supabase.auth.getUser(),
+      ]);
+      return {
+        ...data,
+        email: data?.email ?? authData?.user?.email ?? '',
+      };
     },
     enabled: !!userId,
   });
@@ -128,6 +133,11 @@ export default function ProfileScreen() {
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity style={styles.deleteAccountBtn} onPress={() => router.push('/delete-account')}>
+          <Icon name="trash" size={16} color="#b91c1c" />
+          <Text style={styles.deleteAccountText}>Delete Account</Text>
+        </TouchableOpacity>
+
         <Text style={styles.version}>Numzaro v1.0.0</Text>
       </ScrollView>
     </SafeAreaView>
@@ -188,6 +198,19 @@ function makeStyles(c: ThemeColors) {
       gap: 8,
     },
     signOutText: { color: '#b91c1c', fontSize: 15, fontFamily: 'Poppins_700Bold' },
+    deleteAccountBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginBottom: 24,
+    },
+    deleteAccountText: {
+      color: '#b91c1c',
+      fontSize: 13,
+      fontFamily: 'Poppins_500Medium',
+      textDecorationLine: 'underline',
+    },
     version: { textAlign: 'center', fontSize: 12, color: c.textMuted },
   });
 }

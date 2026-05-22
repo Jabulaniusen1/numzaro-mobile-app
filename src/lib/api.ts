@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+const BASE_URL = 'https://numzaro.com';
 
 export class ApiError extends Error {
   status: number;
@@ -32,7 +32,7 @@ async function getBearerHeaders() {
 }
 
 async function apiFetch<T = any>(path: string, options?: RequestInit): Promise<T> {
-  if (!BASE_URL) throw new Error('Missing EXPO_PUBLIC_API_BASE_URL');
+  if (!BASE_URL) throw new Error('Missing API base URL');
 
   const headers = await getBearerHeaders();
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -164,20 +164,6 @@ export interface EsimUsage {
   remainingFormatted?: string;
   percentUsed?: number;
   lastUpdateTime?: string;
-}
-
-export interface PlatfoneService {
-  id?: string | number;
-  serviceId?: string | number;
-  name?: string;
-  [key: string]: unknown;
-}
-
-export interface PlatfoneCountry {
-  id?: string | number;
-  countryId?: string | number;
-  name?: string;
-  [key: string]: unknown;
 }
 
 // Balance and FX
@@ -320,26 +306,26 @@ export async function purchaseAnotherFromActiveNumber(activeNumber: ActiveNumber
   });
 }
 
-// Rentals (Textverified/Grizzly)
+// Rentals (Textverified)
 export const fetchRentalServices = (
   page = 1,
   limit = 24,
   reservationType: ReservationType = 'renewable'
 ) => {
   const query = buildQuery({ page, limit, reservationType });
-  return apiFetch(`/api/grizzly/services?${query}`);
+  return apiFetch(`/api/rentals/services?${query}`);
 };
 
-export const fetchRentalCountries = () => apiFetch('/api/grizzly/countries');
+export const fetchRentalCountries = () => apiFetch('/api/rentals/countries');
 
 export const fetchRentalPricing = (service: string, country: string, isRenewable: boolean) => {
   const query = buildQuery({ mode: 'rental', service, country, isRenewable });
-  return apiFetch(`/api/grizzly/pricing?${query}`);
+  return apiFetch(`/api/rentals/pricing?${query}`);
 };
 
-export const fetchGrizzlyActivationPricing = (serviceName: string) => {
+export const fetchRentalActivationPricing = (serviceName: string) => {
   const query = buildQuery({ mode: 'activation', service: serviceName, country: 'any' });
-  return apiFetch(`/api/grizzly/pricing?${query}`);
+  return apiFetch(`/api/rentals/pricing?${query}`);
 };
 
 export const purchaseRental = (payload: RentalPurchasePayload) =>
@@ -379,25 +365,6 @@ export const fetchEsimUsage = ({ orderId, esimTranNo }: EsimUsagePayload) =>
       ...(esimTranNo ? { esimTranNo } : {}),
     }),
   });
-
-// Platfone
-export const fetchPlatfoneServices = () =>
-  apiFetch<{ services?: PlatfoneService[]; data?: PlatfoneService[] }>('/api/platfone/services');
-
-export const fetchPlatfoneCountries = (service: string | number) => {
-  const query = buildQuery({ service });
-  return apiFetch<{ countries?: PlatfoneCountry[]; data?: PlatfoneCountry[] }>(`/api/platfone/countries?${query}`);
-};
-
-export const fetchPlatfonePricing = (service: string | number, country?: string | number) => {
-  const query = buildQuery({ service, country });
-  return apiFetch(`/api/platfone/pricing?${query}`);
-};
-
-export const fetchPlatfoneActivations = (type: 'active' | 'history', page = 1, perPage = 25) => {
-  const query = buildQuery({ type, page, per_page: perPage });
-  return apiFetch(`/api/platfone/activations?${query}`);
-};
 
 // Numbers actions + sync
 export const updateNumber = (id: string, action: string) =>
@@ -439,35 +406,6 @@ export const fetchUserNumbers = (params?: { status?: string; limit?: number; off
 };
 
 export const cancelNumber = (id: string) => updateNumber(id, 'cancel');
-
-// Social boost services
-export const fetchSocialServices = (params?: { search?: string; category?: string; type?: string }) => {
-  const query = buildQuery({
-    search: params?.search ?? '',
-    category: params?.category ?? '',
-    type: params?.type ?? '',
-  });
-  return apiFetch<{ services: any[]; filters?: any }>(`/api/services?${query}`);
-};
-
-// Social order creation
-export const createOrder = (body: object) =>
-  apiFetch('/api/orders/create', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-
-export const cancelOrder = (orderId: string) =>
-  apiFetch('/api/orders/cancel', {
-    method: 'POST',
-    body: JSON.stringify({ orderId }),
-  });
-
-export const refillOrder = (orderId: string) =>
-  apiFetch('/api/orders/refill', {
-    method: 'POST',
-    body: JSON.stringify({ orderId }),
-  });
 
 // Wallet funding + verification
 export const initWalletFund = (amount: number, currency = 'NGN') =>

@@ -10,11 +10,12 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { fetchUserNumbers, purchaseAnotherFromActiveNumber, updateNumber } from '@/lib/api';
+import { fetchFxRate, fetchUserNumbers, purchaseAnotherFromActiveNumber, updateNumber } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/hooks/useTheme';
 import { ThemeColors } from '@/lib/theme';
@@ -25,6 +26,15 @@ type TabType = 'active' | 'history';
 
 const ACTIVE_STATUSES = ['PENDING', 'RECEIVED', 'ACTIVE'];
 const HISTORY_STATUSES = ['FINISHED', 'CANCELED', 'TIMEOUT', 'BANNED', 'CANCELLED', 'SUSPENDED'];
+
+function isExpiredNumber(number: any) {
+  const statusUpper = String(number?.status ?? '').toUpperCase();
+  if (statusUpper === 'CANCELED' || statusUpper === 'CANCELLED') return true;
+  if (!number?.expires_at) return false;
+  const t = new Date(number.expires_at).getTime();
+  if (Number.isNaN(t)) return false;
+  return t <= Date.now();
+}
 
 export default function MyNumbersScreen() {
   const router = useRouter();
@@ -46,30 +56,63 @@ export default function MyNumbersScreen() {
     enabled: !!userId,
   });
 
-  // Realtime OTP subscription for the first active number
-  const firstActive = numbers.find((n: any) => ACTIVE_STATUSES.includes(n.status?.toUpperCase()));
+  const { data: fxRateData } = useQuery({
+    queryKey: ['fx-rate', 'USD', 'NGN'],
+    queryFn: () => fetchFxRate('USD', 'NGN'),
+    staleTime: 10 * 60_000,
+  });
+  const usdToNgnRate = Number((fxRateData as any)?.rate ?? (fxRateData as any)?.data?.rate ?? 0) || null;
+
+  // Realtime OTP subscription for all active numbers
+  const activeNumbers = numbers.filter((n: any) => ACTIVE_STATUSES.includes(n.status?.toUpperCase()));
+  const activeNumberIdsKey = activeNumbers.map((n: any) => n.id).join(',');
 
   useEffect(() => {
-    if (!firstActive) return;
+    if (!activeNumbers.length) return;
 
-    const channel = supabase
-      .channel(`otp-${firstActive.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'otp_codes',
-          filter: `number_id=eq.${firstActive.id}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['numbers', userId] });
-        }
-      )
-      .subscribe();
+    const channels = activeNumbers.map((num: any) =>
+      supabase
+        .channel(`otp-${num.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'otp_codes',
+            filter: `number_id=eq.${num.id}`,
+          },
+          async (payload: any) => {
+            const code = payload?.new?.code ? String(payload.new.code) : null;
+            const phone = num?.phone_number ? String(num.phone_number) : 'your number';
 
-    return () => { supabase.removeChannel(channel); };
-  }, [firstActive?.id]);
+            queryClient.invalidateQueries({ queryKey: ['numbers', userId] });
+            queryClient.invalidateQueries({ queryKey: ['otps', num.id] });
+
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'New OTP received',
+                body: code ? `OTP ${code} arrived for ${phone}` : `A new OTP arrived for ${phone}`,
+                data: { type: 'otp', numberId: num.id, code: code ?? '' },
+              },
+              trigger: null,
+            });
+          }
+        )
+        .subscribe()
+    );
+
+    return () => {
+      channels.forEach((channel) => {
+        supabase.removeChannel(channel);
+      });
+    };
+  }, [activeNumberIdsKey, userId, queryClient]);
+
+  useEffect(() => {
+    Notifications.requestPermissionsAsync().catch(() => {
+      // No-op if permissions fail; app still receives OTP in UI.
+    });
+  }, []);
 
   const handleAction = async (numberId: string, action: string) => {
     const num = numbers.find((n: any) => n.id === numberId);
@@ -164,8 +207,30 @@ export default function MyNumbersScreen() {
     return true;
   });
 
-  const prominentNumber = tab === 'active' ? filteredNumbers[0] : null;
-  const restNumbers = tab === 'active' ? filteredNumbers.slice(1) : filteredNumbers;
+  const prominentNumber = tab === 'active'
+    ? filteredNumbers.find((n: any) => !isExpiredNumber(n)) ?? null
+    : null;
+
+  const { data: latestProminentOtp } = useQuery({
+    queryKey: ['latest-otp', prominentNumber?.id],
+    queryFn: async () => {
+      if (!prominentNumber?.id) return null;
+      const { data } = await supabase
+        .from('otp_codes')
+        .select('code, created_at')
+        .eq('number_id', prominentNumber.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data ?? null;
+    },
+    enabled: !!prominentNumber?.id,
+    refetchInterval: 10000,
+  });
+
+  const restNumbers = tab === 'active'
+    ? filteredNumbers.filter((n: any) => n.id !== prominentNumber?.id)
+    : filteredNumbers;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -234,14 +299,17 @@ export default function MyNumbersScreen() {
               }
               return (
                 <NumberCard
-                  number={prominentNumber}
+                  number={{
+                    ...prominentNumber,
+                    otp_code: latestProminentOtp?.code ?? prominentNumber.otp_code ?? null,
+                  }}
                   onAction={handleAction}
                   actionLoading={actionLoading}
                   isProminent
                   onGetAnother={() => handleGetAnother(prominentNumber)}
                   getAnotherLoading={getAnotherLoadingId === prominentNumber.id}
-                  onViewMessages={() => router.push(`/numbers/${prominentNumber.id}/messages` as any)}
                   onViewOtps={() => router.push(`/numbers/${prominentNumber.id}/otps` as any)}
+                  usdToNgnRate={usdToNgnRate}
                 />
               );
             }

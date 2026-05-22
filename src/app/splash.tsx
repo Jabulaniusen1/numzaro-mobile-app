@@ -31,13 +31,6 @@ const SLIDES: Slide[] = [
     accentColor: '#a78bfa',
   },
   {
-    id: '2',
-    animation: require('@/assets/animations/boost-socials.json'),
-    title: 'Grow Your\nAudience Fast.',
-    subtitle: 'Boost followers, likes, and views across every major social platform in seconds.',
-    accentColor: '#fbbf24',
-  },
-  {
     id: '3',
     animation: require('@/assets/animations/esim-globe.json'),
     title: 'Stay Connected\nAnywhere.',

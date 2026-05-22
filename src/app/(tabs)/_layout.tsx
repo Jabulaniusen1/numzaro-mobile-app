@@ -12,6 +12,8 @@ function TabIcon({ icon, label, focused }: { icon: IconName; label: string; focu
       <Text
         style={[styles.label, focused && styles.labelActive]}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.65}
         allowFontScaling={false}
       >
         {label}
@@ -44,6 +46,14 @@ export default function TabsLayout() {
           elevation: 12,
           paddingBottom: 0,
           paddingTop: 0,
+          paddingHorizontal: 8,
+        },
+        tabBarItemStyle: {
+          flex: 1,
+          height: 66,
+        },
+        tabBarIconStyle: {
+          marginTop: 8,
         },
       }}
     >
@@ -54,22 +64,18 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="services"
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon="rocket" label="Boost" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
         name="numbers"
         options={{
           tabBarIcon: ({ focused }) => <TabIcon icon="phone" label="Numbers" focused={focused} />,
         }}
       />
       <Tabs.Screen
+        name="services"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
         name="orders"
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon icon="box" label="Orders" focused={focused} />,
-        }}
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="profile"
@@ -85,8 +91,8 @@ const styles = StyleSheet.create({
   tab: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 58,
-    gap: 2,
+    width: '100%',
+    gap: 1,
   },
   iconPill: {
     width: 42,
@@ -103,6 +109,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_500Medium',
     color: '#9ca3af',
     textAlign: 'center',
+    width: '100%',
   },
   labelActive: {
     color: '#7C5CFC',
