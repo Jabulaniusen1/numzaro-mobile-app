@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-const BASE_URL = 'https://numzaro.com';
+const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://numzaro.com';
 
 export class ApiError extends Error {
   status: number;

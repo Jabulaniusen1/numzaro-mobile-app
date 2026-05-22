@@ -94,7 +94,7 @@ export default function FundWalletScreen() {
       const email = res.email ?? (res as any).data?.email ?? '';
       if (!reference) throw new Error('No payment reference received from server.');
 
-      const publicKey = 'pk_live_3bccfc05fe805bdae3bd0f80fadb76ef668353e9';
+      const publicKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY!;
       setPaymentReference(reference);
       setCheckoutHtml(buildPaystackHtml(publicKey, reference, email, parsedAmount * 100));
       setStep('webview');

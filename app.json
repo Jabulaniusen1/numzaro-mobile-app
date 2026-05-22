@@ -29,6 +29,7 @@
       "favicon": "./assets/images/logos/icon color.png"
     },
     "plugins": [
+      "./plugins/withAdiRegistration",
       [
         "expo-router",
         {
@@ -39,9 +40,15 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#7C5CFC",
+          "image": "./assets/images/logos/icon color.png",
+          "imageWidth": 160,
           "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "image": "./assets/images/logos/icon color.png",
+            "imageWidth": 160
+          },
+          "ios": {
+            "image": "./assets/images/logos/icon color.png",
+            "imageWidth": 160
           }
         }
       ],
