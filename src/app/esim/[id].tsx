@@ -128,11 +128,19 @@ export default function EsimOrderDetailScreen() {
   const usage = usageQuery.data?.usage;
   const usagePct = usage?.percentUsed != null ? Math.min(100, Math.max(0, Number(usage.percentUsed))) : null;
 
+  const handleBackPress = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/esim' as any);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBackPress} style={styles.backBtn}>
           <Icon name="chevronLeft" size={22} color="#7C5CFC" />
         </TouchableOpacity>
         <Text style={styles.title}>eSIM Detail</Text>

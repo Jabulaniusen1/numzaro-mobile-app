@@ -15,11 +15,12 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/hooks/useTheme';
-import { ActivityIndicator, View, Text, TextInput, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, Text, TextInput, StyleSheet, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Toast from 'react-native-toast-message';
 import { Icon, IconName } from '@/components/Icon';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 
 // Apply Poppins globally to all Text and TextInput components
 (Text as any).defaultProps = { style: { fontFamily: 'Poppins_400Regular' } };
@@ -103,6 +104,55 @@ export default function RootLayout() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    let cancelled = false;
+
+    const registerPushToken = async () => {
+      try {
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'default',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#7C5CFC',
+          });
+        }
+
+        const existing = await Notifications.getPermissionsAsync();
+        let status = existing.status;
+        if (status !== 'granted') {
+          const requested = await Notifications.requestPermissionsAsync();
+          status = requested.status;
+        }
+        if (status !== 'granted') return;
+
+        const projectId =
+          Constants.expoConfig?.extra?.eas?.projectId ??
+          (Constants as any)?.easConfig?.projectId;
+
+        const tokenResult = projectId
+          ? await Notifications.getExpoPushTokenAsync({ projectId })
+          : await Notifications.getExpoPushTokenAsync();
+
+        const token = tokenResult.data;
+        if (!token || cancelled) return;
+
+        await supabase.from('users').update({ push_token: token }).eq('id', userId);
+      } catch (error) {
+        console.log('Push token registration failed:', error);
+      }
+    };
+
+    registerPushToken();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
 
   if (authLoading || !fontsLoaded) {
     return (

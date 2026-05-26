@@ -23,11 +23,19 @@ export default function EsimHomeScreen() {
   const activeCount = orders.filter((o) => ACTIVE_STATUSES.has(String(o.status ?? ''))).length;
   const totalCount = orders.length;
 
+  const handleBackPress = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/(tabs)' as any);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBackPress} style={styles.backBtn}>
           <Icon name="chevronLeft" size={22} color="#7C5CFC" />
         </TouchableOpacity>
         <Text style={styles.title}>eSIM</Text>

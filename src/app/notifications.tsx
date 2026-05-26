@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -115,7 +114,7 @@ export default function NotificationsScreen() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [userId]);
+  }, [userId, queryClient]);
 
   const markAsRead = async (id: string) => {
     await supabase
@@ -157,50 +156,64 @@ export default function NotificationsScreen() {
   const notifications = data?.notifications ?? [];
   const unreadCount = data?.unreadCount ?? 0;
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Icon name="chevronLeft" size={22} color="#7C5CFC" />
-        </TouchableOpacity>
-        <View style={styles.headerTitleRow}>
-          <Icon name="bell" size={18} color={colors.text} />
-          <Text style={styles.headerTitle}>
-            Notifications
-            {unreadCount > 0 && (
-              <Text style={styles.unreadBadge}> ({unreadCount})</Text>
-            )}
-          </Text>
-        </View>
-        {unreadCount > 0 ? (
-          <TouchableOpacity onPress={markAllAsRead} style={styles.markAllBtn}>
-            <Text style={styles.markAllText}>Mark All</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 60 }} />
-        )}
-      </View>
+  const handleBackPress = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/(tabs)' as any);
+  };
 
-      {/* Type Filter */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterScroll}
-      >
-        {TYPES.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[styles.filterChip, selectedType === t.key && { backgroundColor: t.color, borderColor: t.color }]}
-            onPress={() => setSelectedType(t.key)}
-          >
-            {selectedType !== t.key && <View style={[styles.filterDot, { backgroundColor: t.color }]} />}
-            <Text style={[styles.filterChipText, selectedType === t.key && { color: '#fff' }]}>
-              {t.label}
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <View style={styles.topSection}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerSideLeft}>
+            <TouchableOpacity onPress={handleBackPress} style={styles.backBtn}>
+              <Icon name="chevronLeft" size={22} color="#7C5CFC" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.headerTitleRow}>
+            <Icon name="bell" size={18} color={colors.text} />
+            <Text style={styles.headerTitle}>
+              Notifications
+              {unreadCount > 0 && <Text style={styles.unreadBadge}> ({unreadCount})</Text>}
             </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+          </View>
+
+          <View style={styles.headerSideRight}>
+            {unreadCount > 0 ? (
+              <TouchableOpacity onPress={markAllAsRead} style={styles.markAllBtn}>
+                <Text style={styles.markAllText}>Mark all</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+
+        {/* Type Filter */}
+        <View style={styles.filterWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterScroll}
+          >
+            {TYPES.map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                style={[styles.filterChip, selectedType === t.key && { backgroundColor: t.color, borderColor: t.color }]}
+                onPress={() => setSelectedType(t.key)}
+              >
+                {selectedType !== t.key && <View style={[styles.filterDot, { backgroundColor: t.color }]} />}
+                <Text style={[styles.filterChipText, selectedType === t.key && { color: '#fff' }]}>
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
 
       {isLoading ? (
         <View style={styles.centered}>
@@ -210,7 +223,10 @@ export default function NotificationsScreen() {
         <FlatList
           data={notifications}
           keyExtractor={(item: any) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            notifications.length === 0 && styles.listContentEmpty,
+          ]}
           refreshControl={
             <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor="#7C5CFC" />
           }
@@ -232,24 +248,86 @@ export default function NotificationsScreen() {
 function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.bg },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 8 },
-    backBtn: { padding: 4 },
-    headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center' },
+    topSection: {
+      paddingTop: 4,
+      paddingBottom: 4,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingBottom: 10,
+    },
+    headerSideLeft: {
+      width: 72,
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+    },
+    headerSideRight: {
+      width: 72,
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+    },
+    backBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    headerTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      flex: 1,
+    },
     headerTitle: { fontSize: 18, fontFamily: 'Poppins_700Bold', color: c.text, textAlign: 'center' },
     unreadBadge: { color: '#7C5CFC' },
-    markAllBtn: { paddingHorizontal: 4 },
-    markAllText: { color: '#7C5CFC', fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
-    filterScroll: { paddingHorizontal: 16, paddingBottom: 10, gap: 8, alignItems: 'center' },
-    filterChip: {
-      flexDirection: 'row', alignItems: 'center', height: 30,
-      paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20,
-      backgroundColor: c.card, borderWidth: 1, borderColor: c.border, gap: 5,
+    markAllBtn: {
+      minHeight: 32,
+      paddingHorizontal: 4,
+      justifyContent: 'center',
     },
-    filterDot: { width: 6, height: 6, borderRadius: 3 },
-    filterChipText: { fontSize: 12, color: c.text, fontFamily: 'Poppins_500Medium' },
-    listContent: { padding: 16, paddingTop: 4, paddingBottom: 60 },
+    markAllText: { color: '#7C5CFC', fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
+    filterWrap: {
+      paddingBottom: 8,
+    },
+    filterScroll: {
+      paddingLeft: 16,
+      paddingRight: 24,
+      gap: 10,
+      alignItems: 'center',
+    },
+    filterChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      height: 38,
+      paddingHorizontal: 14,
+      borderRadius: 19,
+      backgroundColor: c.card,
+      borderWidth: 1,
+      borderColor: c.border,
+      gap: 7,
+    },
+    filterDot: { width: 10, height: 10, borderRadius: 5 },
+    filterChipText: { fontSize: 13, color: c.text, fontFamily: 'Poppins_500Medium' },
+    listContent: {
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: 72,
+    },
+    listContentEmpty: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      paddingBottom: 140,
+    },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
-    emptyText: { color: c.textSub, fontSize: 14 },
+    empty: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+    },
+    emptyText: { color: c.textSub, fontSize: 15, fontFamily: 'Poppins_500Medium' },
   });
 }

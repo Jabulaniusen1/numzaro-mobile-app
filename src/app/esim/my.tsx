@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { fetchEsimOrders, EsimOrder } from '@/lib/api';
@@ -9,8 +9,6 @@ import { ThemeColors } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
 
 const ACTIVE_STATUSES = new Set(['got_resource', 'in_use']);
-const ALL_SHOWN_STATUSES = new Set(['got_resource', 'in_use', 'used_up', 'pending', 'expired', 'cancelled']);
-
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   pending:      { label: 'Pending',    color: '#d97706', bg: '#fef3c7' },
   got_resource: { label: 'Activated',  color: '#2563eb', bg: '#dbeafe' },
@@ -40,11 +38,16 @@ export default function MyEsimsScreen() {
   });
 
   const orders = ordersQuery.data?.orders ?? [];
-  const activeOrders = useMemo(
-    () => orders.filter((o) => ACTIVE_STATUSES.has(String(o.status ?? ''))),
-    [orders]
-  );
+  const activeOrders = orders.filter((o) => ACTIVE_STATUSES.has(String(o.status ?? '')));
   const displayed = activeTab === 'Active' ? activeOrders : orders;
+
+  const handleBackPress = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/esim' as any);
+  };
 
   const renderOrder = ({ item }: { item: EsimOrder }) => {
     const meta = getStatusMeta(item.status);
@@ -103,7 +106,7 @@ export default function MyEsimsScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBackPress} style={styles.backBtn}>
           <Icon name="chevronLeft" size={22} color="#7C5CFC" />
         </TouchableOpacity>
         <Text style={styles.title}>My eSIMs</Text>

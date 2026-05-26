@@ -44,10 +44,18 @@ export default function BuyEsimScreen() {
     } as any);
   };
 
+  const handleBackPress = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/esim' as any);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBackPress} style={styles.backBtn}>
           <Icon name="chevronLeft" size={22} color="#7C5CFC" />
         </TouchableOpacity>
         <Text style={styles.title}>Select Country</Text>
@@ -96,7 +104,7 @@ export default function BuyEsimScreen() {
           {filteredCountries.length === 0 ? (
             <View style={styles.emptyWrap}>
               <Icon name="globe" size={32} color={colors.textMuted} />
-              <Text style={styles.emptyText}>No countries found for "{countrySearch}"</Text>
+              <Text style={styles.emptyText}>{`No countries found for "${countrySearch}"`}</Text>
             </View>
           ) : (
             <View style={styles.countryGrid}>

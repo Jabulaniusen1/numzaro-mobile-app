@@ -19,6 +19,7 @@ import {
   fetchRentalCountries,
   fetchRentalPricing,
   fetchRentalServices,
+  fetchSmsPoolPricing,
   fetchSmsPoolServices,
   fetchSuggestedCountries,
   purchaseOneTimeNumber,
@@ -34,33 +35,58 @@ import { ThemeColors } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
 import { ServiceLogo } from '@/components/ServiceLogo';
 import { useRouter } from 'expo-router';
-import { FontAwesome5 } from '@expo/vector-icons';
+import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react-native';
+import {
+  AmazonIcon,
+  AppleIcon,
+  DiscordIcon,
+  Facebook02Icon,
+  GoogleIcon,
+  InstagramIcon,
+  Linkedin02Icon,
+  MicrosoftIcon,
+  NewTwitterIcon,
+  PinterestIcon,
+  RedditIcon,
+  SnapchatIcon,
+  SoundcloudIcon,
+  SpotifyIcon,
+  TelegramIcon,
+  ThreadsIcon,
+  TiktokIcon,
+  TumblrIcon,
+  TwitchIcon,
+  TwitterIcon,
+  VimeoIcon,
+  WhatsappIcon,
+  YoutubeIcon,
+} from '@hugeicons/core-free-icons';
 
-const TV_PLATFORM_META: Record<string, { color: string; icon: string }> = {
-  whatsapp:   { color: '#25D366', icon: 'whatsapp' },
-  instagram:  { color: '#E1306C', icon: 'instagram' },
-  facebook:   { color: '#1877F2', icon: 'facebook' },
-  tiktok:     { color: '#010101', icon: 'tiktok' },
-  telegram:   { color: '#0088CC', icon: 'telegram' },
-  twitter:    { color: '#1DA1F2', icon: 'twitter' },
-  x:          { color: '#222222', icon: 'twitter' },
-  google:     { color: '#EA4335', icon: 'google' },
-  gmail:      { color: '#EA4335', icon: 'google' },
-  youtube:    { color: '#FF0000', icon: 'youtube' },
-  snapchat:   { color: '#F7C900', icon: 'snapchat' },
-  discord:    { color: '#5865F2', icon: 'discord' },
-  linkedin:   { color: '#0A66C2', icon: 'linkedin' },
-  spotify:    { color: '#1DB954', icon: 'spotify' },
-  twitch:     { color: '#9146FF', icon: 'twitch' },
-  reddit:     { color: '#FF4500', icon: 'reddit' },
-  pinterest:  { color: '#E60023', icon: 'pinterest' },
-  microsoft:  { color: '#00A4EF', icon: 'microsoft' },
-  apple:      { color: '#555555', icon: 'apple' },
-  amazon:     { color: '#FF9900', icon: 'amazon' },
-  soundcloud: { color: '#FF5500', icon: 'soundcloud' },
-  threads:    { color: '#101010', icon: 'at' },
-  tumblr:     { color: '#35465C', icon: 'tumblr' },
-  vimeo:      { color: '#1AB7EA', icon: 'vimeo' },
+const TV_PLATFORM_META: Record<string, { color: string; icon: IconSvgElement }> = {
+  whatsapp:   { color: '#25D366', icon: WhatsappIcon },
+  instagram:  { color: '#E1306C', icon: InstagramIcon },
+  facebook:   { color: '#1877F2', icon: Facebook02Icon },
+  tiktok:     { color: '#010101', icon: TiktokIcon },
+  telegram:   { color: '#0088CC', icon: TelegramIcon },
+  twitter:    { color: '#1DA1F2', icon: TwitterIcon },
+  x:          { color: '#222222', icon: NewTwitterIcon },
+  google:     { color: '#EA4335', icon: GoogleIcon },
+  gmail:      { color: '#EA4335', icon: GoogleIcon },
+  youtube:    { color: '#FF0000', icon: YoutubeIcon },
+  snapchat:   { color: '#F7C900', icon: SnapchatIcon },
+  discord:    { color: '#5865F2', icon: DiscordIcon },
+  linkedin:   { color: '#0A66C2', icon: Linkedin02Icon },
+  spotify:    { color: '#1DB954', icon: SpotifyIcon },
+  twitch:     { color: '#9146FF', icon: TwitchIcon },
+  reddit:     { color: '#FF4500', icon: RedditIcon },
+  pinterest:  { color: '#E60023', icon: PinterestIcon },
+  microsoft:  { color: '#00A4EF', icon: MicrosoftIcon },
+  apple:      { color: '#555555', icon: AppleIcon },
+  amazon:     { color: '#FF9900', icon: AmazonIcon },
+  soundcloud: { color: '#FF5500', icon: SoundcloudIcon },
+  threads:    { color: '#101010', icon: ThreadsIcon },
+  tumblr:     { color: '#35465C', icon: TumblrIcon },
+  vimeo:      { color: '#1AB7EA', icon: VimeoIcon },
 };
 
 function getTvPlatformKey(name: string): string | null {
@@ -71,7 +97,7 @@ function getTvPlatformKey(name: string): string | null {
   return null;
 }
 
-function getTvPlatformMeta(name: string): { color: string; icon: string } | null {
+function getTvPlatformMeta(name: string): { color: string; icon: IconSvgElement } | null {
   const key = getTvPlatformKey(name);
   return key ? TV_PLATFORM_META[key] : null;
 }
@@ -152,20 +178,9 @@ function extractArray(payload: any, keys: string[]): any[] {
   return [];
 }
 
-function providerLabel(provider?: string): string {
-  if (!provider) return '';
-  if (provider === 'smspool') return 'SMSPool';
-  if (provider === 'textverified') return 'TextVerified';
-  return provider;
-}
-
 function formatPurchaseError(e: unknown): string {
   if (e instanceof ApiError) {
-    const payload = e.payload as any;
-    const p = payload?.provider || payload?.errorSource;
-    const label = providerLabel(p);
-    const prefix = label ? `${label}: ` : '';
-    return `${prefix}${e.message}`;
+    return e.message;
   }
   return (e as Error)?.message ?? 'Something went wrong.';
 }
@@ -198,6 +213,9 @@ interface CountryItem {
   areaCode?: string;
   flag?: string;
   sellPrice?: number;
+  sellPriceNgn?: number;
+  sellPriceCurrency?: string;
+  sellPriceUsd?: number;
 }
 
 interface RentalPricingOption {
@@ -261,6 +279,13 @@ function normalizeCountry(raw: any): CountryItem {
   const name = String(raw?.name ?? raw?.countryName ?? raw?.country_name ?? raw?.country ?? code);
   const id = `${code || shortCode || name}-${name}`;
   const sellPrice = toNumber(raw?.sellPrice ?? raw?.sell_price ?? raw?.price ?? null);
+  const sellPriceNgn = pickNumber(raw?.sellPriceNgn, raw?.sell_price_ngn, raw?.priceNGN, raw?.price_ngn, raw?.ngnPrice);
+  const sellPriceUsd = pickNumber(raw?.sellPriceUsd, raw?.sell_price_usd, raw?.priceUsd, raw?.price_usd, raw?.rawPrice, raw?.raw_price);
+  const sellPriceCurrency =
+    typeof raw?.sellPriceCurrency === 'string' ? raw.sellPriceCurrency :
+    typeof raw?.sell_price_currency === 'string' ? raw.sell_price_currency :
+    typeof raw?.priceCurrency === 'string' ? raw.priceCurrency :
+    undefined;
   return {
     id,
     code: code || String(shortCode ?? areaCode ?? name),
@@ -269,7 +294,30 @@ function normalizeCountry(raw: any): CountryItem {
     areaCode: areaCode ? String(areaCode) : undefined,
     flag: typeof raw?.flag === 'string' ? raw.flag : undefined,
     sellPrice: sellPrice ?? undefined,
+    sellPriceNgn: sellPriceNgn ?? undefined,
+    sellPriceCurrency: sellPriceCurrency ? String(sellPriceCurrency).toUpperCase() : undefined,
+    sellPriceUsd: sellPriceUsd ?? undefined,
   };
+}
+
+function resolveCountryPriceNGN(country: CountryItem | null, fxRate: number | null): number | null {
+  if (!country) return null;
+
+  const explicitNgn = toNumber(country.sellPriceNgn);
+  if (explicitNgn !== null) return explicitNgn;
+
+  const sell = toNumber(country.sellPrice);
+  if (sell === null) return null;
+
+  const currency = country.sellPriceCurrency?.toUpperCase();
+  if (currency === 'NGN') return sell;
+  if (currency === 'USD' && fxRate !== null) return sell * fxRate;
+
+  if (fxRate !== null && sell > 0 && sell < 50) {
+    return sell * fxRate;
+  }
+
+  return sell;
 }
 
 function normalizeRentalOptions(payload: any, fxRate: number | null, defaultAreaCode?: string): RentalPricingOption[] {
@@ -436,8 +484,24 @@ export default function NumbersScreen() {
   const usPriceUSD = pickNumber(usPricingQuery.data?.price, (usPricingQuery.data as any)?.data?.price);
   const usDisplayPrice = usPriceUSD !== null && fxRate !== null ? usPriceUSD * fxRate : null;
 
-  // Other pricing — from sellPrice stored in selected country
-  const otherDisplayPrice = selectedActivationCountry?.sellPrice ?? null;
+  // Other pricing — fetch exact live pricing for selected service/country
+  const otherPricingQuery = useQuery({
+    queryKey: ['smspool-activation-price', selectedActivationService?.code, selectedActivationCountry?.code],
+    queryFn: () => fetchSmsPoolPricing(selectedActivationService!.code, selectedActivationCountry!.code),
+    enabled:
+      mode === 'activation' &&
+      step === 'confirm' &&
+      source === 'other' &&
+      !!selectedActivationService &&
+      !!selectedActivationCountry,
+  });
+
+  const otherDisplayPrice =
+    pickNumber(
+      (otherPricingQuery.data as any)?.priceNGN,
+      (otherPricingQuery.data as any)?.price_ngn,
+      (otherPricingQuery.data as any)?.ngnPrice,
+    ) ?? resolveCountryPriceNGN(selectedActivationCountry, fxRate);
 
   const rentalOptions = useMemo(
     () => normalizeRentalOptions(
@@ -683,7 +747,7 @@ export default function NumbersScreen() {
                     {meta ? (
                       <>
                         <View style={[styles.tvIconWrap, { backgroundColor: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)' }]}>
-                          <FontAwesome5 name={meta.icon} size={24} color={isLight ? '#1a1a1a' : '#fff'} brand />
+                          <HugeiconsIcon icon={meta.icon} size={24} color={isLight ? '#1a1a1a' : '#fff'} />
                         </View>
                         <Text style={[styles.gridLabel, { color: isLight ? '#1a1a1a' : '#fff' }]} numberOfLines={2}>{item.name}</Text>
                       </>
@@ -836,8 +900,12 @@ export default function NumbersScreen() {
                   {item.flag ?? countryFlag(item.shortCode ?? item.code, item.name)}
                 </Text>
                 <Text style={styles.gridLabel} numberOfLines={2}>{item.name}</Text>
-                {mode === 'activation' && item.sellPrice ? (
-                  <Text style={styles.gridSubLabel}>{format(item.sellPrice)}</Text>
+                {mode === 'activation' ? (
+                  (() => {
+                    const display = resolveCountryPriceNGN(item, fxRate);
+                    if (display === null) return null;
+                    return <Text style={styles.gridSubLabel}>{format(display)}</Text>;
+                  })()
                 ) : mode === 'rental' && (item.areaCode || item.shortCode) ? (
                   <Text style={styles.gridSubLabel}>
                     {item.areaCode ? `Area ${item.areaCode}` : item.shortCode}
@@ -905,14 +973,8 @@ export default function NumbersScreen() {
                 </View>
               </View>
 
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Provider</Text>
-                <Text style={styles.summaryVal}>
-                  {source === 'us' ? 'TextVerified' : 'SMSPool'}
-                </Text>
-              </View>
-
-              {source === 'us' && usPricingQuery.isLoading ? (
+              {(source === 'us' && usPricingQuery.isLoading) ||
+              (source === 'other' && otherPricingQuery.isLoading) ? (
                 <ActivityIndicator color="#7C5CFC" style={{ marginVertical: 8 }} />
               ) : (
                 <View style={styles.summaryRow}>
