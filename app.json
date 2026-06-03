@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/images/app-icon.png",
-      "bundleIdentifier": "com.jabulaniusen.numzaro",
+      "bundleIdentifier": "com.jabulaniusen.numzaroapp",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -22,7 +22,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.jabulaniusen.numzaro"
+      "package": "com.jabulaniusen.numzaroapp"
     },
     "web": {
       "output": "static",
