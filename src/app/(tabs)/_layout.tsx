@@ -1,6 +1,6 @@
 import { Icon, IconName } from '@/components/Icon';
 import { useTheme } from '@/hooks/useTheme';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -16,6 +16,7 @@ export default function TabsLayout() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 8);
+  const router = useRouter();
 
   return (
     <Tabs
@@ -65,6 +66,12 @@ export default function TabsLayout() {
         options={{
           title: 'eSIM',
           tabBarIcon: ({ focused }) => <TabIcon icon="sim" focused={focused} />,
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push('/esim');
+          },
         }}
       />
       <Tabs.Screen

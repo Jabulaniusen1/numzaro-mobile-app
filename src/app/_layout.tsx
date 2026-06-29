@@ -1,6 +1,6 @@
 import '../global.css';
 import 'react-native-url-polyfill/auto';
-import { useEffect, useState } from 'react';
+import { Component, useEffect, useState, type ReactNode } from 'react';
 import { Redirect, Stack, useSegments } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Session } from '@supabase/supabase-js';
@@ -15,7 +15,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/hooks/useTheme';
-import { ActivityIndicator, View, Text, TextInput, StyleSheet, Platform } from 'react-native';
+import { ActivityIndicator, View, Text, TextInput, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Toast from 'react-native-toast-message';
 import { Icon, IconName } from '@/components/Icon';
@@ -70,6 +70,37 @@ const toastConfig = {
   error: (props: { text1?: string; text2?: string }) => <AppToast {...props} type="error" />,
   info: (props: { text1?: string; text2?: string }) => <AppToast {...props} type="info" />,
 };
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.log('Unhandled render error:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={errorStyles.container}>
+          <Text style={errorStyles.title}>Something went wrong</Text>
+          <Text style={errorStyles.body}>Please try again.</Text>
+          <TouchableOpacity
+            style={errorStyles.button}
+            onPress={() => this.setState({ hasError: false })}
+          >
+            <Text style={errorStyles.buttonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -167,36 +198,38 @@ export default function RootLayout() {
   const inSplash = segments[0] === 'splash';
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <StatusBar style={colors.statusBar} />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="splash" options={{ headerShown: false }} />
-        <Stack.Screen name="auth/login" options={{ headerShown: false }} />
-        <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
-        <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
-        <Stack.Screen name="auth/reset-password" options={{ headerShown: false }} />
-        <Stack.Screen name="my-numbers/index" options={{ headerShown: false }} />
-        <Stack.Screen name="numbers/[id]/messages" options={{ headerShown: false }} />
-        <Stack.Screen name="numbers/[id]/otps" options={{ headerShown: false }} />
-        <Stack.Screen name="notifications" options={{ headerShown: false }} />
-        <Stack.Screen name="esim/index" options={{ headerShown: false }} />
-        <Stack.Screen name="esim/buy" options={{ headerShown: false }} />
-        <Stack.Screen name="esim/my" options={{ headerShown: false }} />
-        <Stack.Screen name="esim/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="transactions" options={{ headerShown: false }} />
-        <Stack.Screen name="fund-wallet" options={{ headerShown: false }} />
-      </Stack>
-      {!session && !inSplash && !inAuth && <Redirect href="/splash" />}
-      {session && (inSplash || inAuth) && !inResetPassword && <Redirect href="/(tabs)" />}
-      <Toast
-        config={toastConfig}
-        position="top"
-        topOffset={58}
-        visibilityTime={2800}
-        autoHide
-      />
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <StatusBar style={colors.statusBar} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="splash" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/reset-password" options={{ headerShown: false }} />
+          <Stack.Screen name="my-numbers/index" options={{ headerShown: false }} />
+          <Stack.Screen name="numbers/[id]/messages" options={{ headerShown: false }} />
+          <Stack.Screen name="numbers/[id]/otps" options={{ headerShown: false }} />
+          <Stack.Screen name="notifications" options={{ headerShown: false }} />
+          <Stack.Screen name="esim/index" options={{ headerShown: false }} />
+          <Stack.Screen name="esim/buy" options={{ headerShown: false }} />
+          <Stack.Screen name="esim/my" options={{ headerShown: false }} />
+          <Stack.Screen name="esim/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="transactions" options={{ headerShown: false }} />
+          <Stack.Screen name="fund-wallet" options={{ headerShown: false }} />
+        </Stack>
+        {!session && !inSplash && !inAuth && <Redirect href="/splash" />}
+        {session && (inSplash || inAuth) && !inResetPassword && <Redirect href="/(tabs)" />}
+        <Toast
+          config={toastConfig}
+          position="top"
+          topOffset={58}
+          visibilityTime={2800}
+          autoHide
+        />
+      </QueryClientProvider>
+    </AppErrorBoundary>
   );
 }
 
@@ -238,5 +271,38 @@ const toastStyles = StyleSheet.create({
     color: '#4b5563',
     fontSize: 12,
     fontFamily: 'Poppins_500Medium',
+  },
+});
+
+const errorStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F0F2FA',
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  title: {
+    fontSize: 18,
+    fontFamily: 'Poppins_700Bold',
+    color: '#111827',
+  },
+  body: {
+    fontSize: 13,
+    fontFamily: 'Poppins_400Regular',
+    color: '#6b7280',
+    marginBottom: 12,
+  },
+  button: {
+    backgroundColor: '#7C5CFC',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  buttonText: {
+    color: '#fff',
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
   },
 });
